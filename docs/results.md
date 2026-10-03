@@ -493,3 +493,9 @@ What fits for free:
   20-turn survival ~90%). `num_retries` is excluded from cache keys; tau2 keeps a provided value.
 - **Proposed completeness condition before judging:** >= 36 of the 40 planned runs recorded;
   otherwise rerun (resume fills only missing runs) before evaluating.
+- **Run 2 of arm C:** 10/40 runs recorded (5 retail, 5 airline) — not judged (completeness rule).
+  Failures: 11 x HTTP 500, 3 x HTTP 429 (free-tier rate limit at 3 parallel runs), 2 x empty
+  agent reply. After 3 consecutive failures each arm stopped, so many runs were never attempted.
+  Completed runs (indicative only, survivorship-biased): 0 repeated customer messages, 3–15
+  customer turns (similar to the Gemini arm), env outcome agrees with the Gemini arm on 8/10.
+  `max_concurrency` for the Gemma arms lowered from 3 to 2 (throughput only, same test).

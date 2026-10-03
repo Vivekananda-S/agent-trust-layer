@@ -18,6 +18,9 @@ dependencies = [
     "pyyaml>=6.0,<7",
 ]
 
+[project.scripts]
+atl-splits = "atl.data.splits:app"
+
 [project.optional-dependencies]
 # GPU training stack. Lower bounds for now; pin exact versions after the first Colab T4 run.
 train = [

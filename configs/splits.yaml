@@ -1,0 +1,14 @@
+# Task-level split configuration. See docs/plan.md section 5 ("Splits").
+# Changing salt or fractions after the manifest is frozen is a new split version.
+version: 1
+salt: "atl-splits-v1"
+fractions:
+  train: 0.65
+  val: 0.10
+  calib: 0.10
+  test: 0.15
+# Agent model kept out of training entirely (drift test). Set once agent models are chosen.
+heldout_model: null
+# Traces from any other domain go to the `ood` split.
+primary_domain: retail
+manifest_path: splits/splits_v1.json

@@ -115,6 +115,17 @@ def test_tool_message_without_id_matched_fifo(sim: dict[str, Any]) -> None:
     assert all(r.call_id is None for r in results)
 
 
+def test_thought_signature_stripped_from_ids(sim: dict[str, Any]) -> None:
+    for m in sim["messages"]:
+        for c in m.get("tool_calls") or []:
+            c["id"] += "__thought__EosFCogFAWkU+sig=="
+        if m["role"] == "tool":
+            m["id"] += "__thought__EosFCogFAWkU+sig=="
+    steps = sim_to_trace(sim, INFO).steps
+    ids = [s.call_id for s in steps if isinstance(s, ToolCallStep | ToolResultStep)]
+    assert ids == ["c1", "c2", "c2", "c1"]
+
+
 def test_user_tool_calls_rejected(sim: dict[str, Any]) -> None:
     sim["messages"][2]["tool_calls"] = [{"id": "u1", "name": "toggle_wifi", "arguments": {}}]
     with pytest.raises(ValueError, match="user tool calls"):

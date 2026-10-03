@@ -13,6 +13,8 @@ Mapping decisions (see docs/results.md):
   are excluded (`unusable_reason`).
 - The user simulator's control tokens (###STOP### etc.) are stripped: real users never send
   them, and ###TRANSFER### / ###OUT-OF-SCOPE### correlate with the outcome (label leakage).
+- Tool-call ids lose LiteLLM's `__thought__<signature>` suffix (Gemini 3 reasoning state,
+  provider-internal and kilobytes long). Raw files keep the full id.
 """
 
 from __future__ import annotations
@@ -49,6 +51,7 @@ EXCLUDED_TERMINATIONS = {
     "unexpected_error",
 }
 USER_CONTROL_TOKENS = ("###STOP###", "###TRANSFER###", "###OUT-OF-SCOPE###")
+THOUGHT_SIGNATURE_SEP = "__thought__"
 
 
 class RunInfo(BaseModel):
@@ -126,7 +129,7 @@ def _convert_messages(messages: list[dict[str, Any]]) -> list[Step]:
             if msg.get("content"):
                 steps.append(AssistantStep(content=msg["content"]))
             for call in msg.get("tool_calls") or []:
-                call_id = call.get("id") or None
+                call_id = _clean_id(call.get("id"))
                 if call_id:
                     call_tool_by_id[call_id] = call["name"]
                 else:
@@ -139,7 +142,7 @@ def _convert_messages(messages: list[dict[str, Any]]) -> list[Step]:
         elif role == "tool":
             if msg.get("requestor", "assistant") != "assistant":
                 raise ValueError("tool results for the user simulator are not supported")
-            call_id = msg.get("id") or None
+            call_id = _clean_id(msg.get("id"))
             if call_id and call_id in call_tool_by_id:
                 tool = call_tool_by_id[call_id]
             elif open_without_id:
@@ -152,6 +155,11 @@ def _convert_messages(messages: list[dict[str, Any]]) -> list[Step]:
         else:
             raise ValueError(f"unknown tau2 message role {role!r}")
     return steps
+
+
+def _clean_id(raw_id: str | None) -> str | None:
+    """Tool-call id without a provider thought-signature suffix; None if empty."""
+    return (raw_id or "").split(THOUGHT_SIGNATURE_SEP, 1)[0] or None
 
 
 def _strip_control_tokens(text: str) -> str:

@@ -84,10 +84,30 @@ trace gold set, change the salt once, before freezing, and record it here. Never
   was ~170k), nominal $0.045 agent + $0.001 user simulator. Projection per 1,000 traces at list
   prices: ~$48 on 3.8-flash, ~$21 on 3.5-flash-lite, ~$6 on 2.5-flash-lite, ~$1 on Llama 3.1 8B.
   Upper bounds: Gemini's implicit prompt caching discount is not yet credited.
-- **Weak user simulator produces false failures.** Task 108: the agent asked for confirmation,
-  the Flash-Lite user simulator replied "Yes, please proceed with the return. ###STOP###" —
-  confirming and ending the conversation in one turn. The agent never acted, the DB check
-  failed, and the trace is labelled a failure although the agent did nothing wrong. This is
-  label noise in the exact signal the judge learns from; the user simulator must be strong.
+- ~~Weak user simulator produces false failures.~~ **Corrected below**: concluded too fast
+  from one example.
 - Gemini 3 multi-turn tool calling works through tau2: LiteLLM carries the thought signature
   inside the tool-call id, which tau2 preserves. The adapter strips it from traces.
+
+### 2026-10-03 — Paid pilot (retail, 3.8-flash agent and user simulator), stopped at 5 traces
+
+- Stopped by the AI Studio project's own monthly spend cap ("Your project has exceeded its
+  monthly spending cap") after ~$0.37 of real spend. Google's cap and our `budget_usd` are two
+  independent stops; ours never fired because it was set higher.
+- 5 retail traces: 4 succeeded (tasks 49, 97, 113, 53), 1 failed (108). Cost per trace
+  $0.04–0.10, mean ~$0.07 including the user simulator. Thinking tokens are already inside
+  `completion_tokens` (verified: 275 = 222 reasoning + 53 text), so the cost log is accurate.
+  No implicit-cache discount was reported (`cached_tokens` null).
+- **Correction — task 108 fails for a task-definition reason, not a simulator one.** With the
+  strong user simulator the user did *not* confirm-and-stop; it asked only for the refund
+  amount ("You want to know how much money you can get back") and left. The agent correctly
+  asked for confirmation before acting, as the policy requires. But the task's expected
+  actions include `return_delivered_order_items`, so the DB check fails either way. Same
+  failure under two different user simulators; not in tau2's `task_issues` list.
+- **Implication for labelling: `env_outcome` is not ground truth.** A benchmark's own
+  success signal can be wrong when the task is under-specified. Phase 2 human labels must be
+  made without looking at `env_outcome`, and env-vs-human disagreements become a measured
+  quantity (and a review queue), not something to silently trust.
+- A strong agent with clean tools succeeds ~80% here: too few failures for a judge to learn
+  from. Failure diversity has to come from weaker agent models, prompt variants and injected
+  faults, as planned.

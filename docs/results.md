@@ -303,3 +303,78 @@ trace gold set, change the salt once, before freezing, and record it here. Never
     Bound set to 3.5 (still below the minimum). The 92k-char prompt now estimates to ~30.6k.
   - **Overflow ends only that conversation** (logged to failed_runs.jsonl, other runs go on).
     Known bias: the longest conversations (often loops, F6) can still be lost; they are counted.
+
+## Plan revision 1 (2026-10-03)
+
+Driven by cost: the original plan (frontier labeller, frontier reference judge, Gemini customer
+simulator, 3,000–6,000 traces) needed ~$45–57; the budget is the remaining ~₹255 of a ₹500 cap
+plus free resources. `plan.md` sections 2 and 6 are updated to match.
+
+### Decisions
+
+1. **Teacher = `gemini-3.1-flash-lite`.** It labels train/val/calib traces (rationale + JSON).
+   **The reference judge is a separate, stronger Gemini model, run on the gold set only.** Its
+   gold-set predictions go through `final_eval.py` and the guarded loader, cached, never used
+   for training. Priced below with `gemini-3.8-flash` (the pilot model).
+2. **The headline is reported against both human gold labels and the reference judge** (macro-F1
+   vs gold; gap to the reference judge). "Frontier" wording is dropped: neither model is a
+   frontier model, and a small judge matching its own Flash-Lite teacher says little on its own.
+3. **Cost-ratio target becomes "report the measured ratio per judge"** (vs teacher and vs reference
+   judge). Reason: against a Flash-Lite reference (~$1.72 per 1,000 traces) the SLM on a T4
+   (~$0.35/h assumed on-demand) lands at ~6–11%, outside the old 1–5% target; the encoder (~0.6%)
+   would still meet it. The ratio depends on the reference's price, so report it rather than gate on it.
+4. **Second labelling pass covers a stratified 30% of traces plus all flagged traces** (replaces
+   "two LLM labelling runs" over everything in plan §5 step 7). Stratify by agent model, domain,
+   prompt/user variant and fault presence.
+5. **Trace target depends on the customer-simulator A/B test:** about **3,000** traces if the local
+   (Qwen) simulator passes, about **1,500** otherwise (Gemini simulator, budget-limited).
+6. **A/B pass criteria** (as proposed in the review; numeric thresholds are *not yet set* and must
+   be fixed before the run, otherwise "pass" gets decided after seeing the data):
+   - the same 20 tasks, same agent and seeds, run once with the local Qwen simulator and once
+     with the Gemini simulator;
+   - agreement rate between the two arms on env outcomes;
+   - rate of `user_stop_with_content` review flags in each arm;
+   - hand review of every task where the two arms disagree.
+
+### Costs under revision 1 (measured token counts; two prompt sizes assumed)
+
+Measured: simulator 7,949 input tokens over 8.1 calls per local-agent trace (102 traces); policy
+~1,730 Gemini tokens; trace mean 2,743 Gemini tokens; gemini-3.8-flash thinking per agent call
+mean 285 / p90 785 tokens (219 calls); cost log matches raw.jsonl exactly on the pilots.
+Assumed (not yet written): labelling guide 3,000 tokens; judge instructions 1,500 tokens.
+
+| Item | Standard | Batch |
+| --- | --- | --- |
+| Reference judge, gemini-3.8-flash, 500 gold, prices through 2026-12-31, mean thinking | $3.06 | $1.53 |
+| same, heavy thinking (p90) | $3.99 | $2.00 |
+| same from 2027-01-01 (prices double), mean / heavy thinking | $6.11 / $7.99 | $3.06 / $3.99 |
+| Teacher labelling, 3.1 Flash-Lite, 3,000 traces + 2nd pass (37–56%), with cache | $5.77–6.57 | $2.89–3.28 |
+| Teacher labelling, 1,500 traces + 2nd pass, with cache | $2.89–3.28 | $1.44–1.64 |
+| Customer simulator on 3.1 Flash-Lite (if the A/B fails), per trace / x1,500 | $0.0024 / $3.56 | not usable |
+| Customer simulator on local Qwen (if the A/B passes) | $0 (T4 time) | — |
+
+The second-pass range depends on the flagged share (10% vs 37%; the current
+`user_stop_with_content` flag fired on 37% of retail diversity runs, so "flagged" needs a sharper
+definition before it drives the second pass).
+
+### Free-tier limits
+
+Google publishes no per-model free-tier numbers: "Rate limits depend on a variety of factors
+(such as your usage tier) and can be viewed in Google AI Studio"
+(https://aistudio.google.com/rate-limit). Batch limits are listed only for paid tiers, so batch is
+probably unavailable on the free tier. Observed: gemini-3.8-flash free tier = 20 requests/day
+(`quotaValue: 20`), i.e. 25 days for 500 gold traces. The gemini-3.1-flash-lite free-tier limit
+has to be read from the project's AI Studio page.
+
+### Constraints and deviations still open
+
+- **Gold-set size:** gold comes only from test-split tasks (15% of tasks). ~3,000 traces give
+  ~450 test-pool traces (400–600 gold is borderline); ~1,500 give ~225 (not enough). If the A/B
+  fails, either the gold target drops or the test share in `configs/splits.yaml` rises —
+  a split decision, to be taken before the manifest is frozen.
+- **plan.md §4 (3,000–6,000 traces) and §5 step 7 (two full LLM labelling runs)** are superseded
+  by decisions 4–5 but their text is not yet updated.
+- `gemini-3.1-flash-lite` shuts down on 2027-05-07 (replacement: 3.5 Flash-Lite at $0.30/$2.50);
+  `gemini-3.8-flash` prices double on 2027-01-01. Run and cache the teacher and the reference
+  judge before those dates where possible.
+- The A/B test itself costs ~₹25 (Gemini arm, 20 runs).

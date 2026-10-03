@@ -45,7 +45,9 @@ Teams currently catch these in one of three ways, and each breaks at scale.
 
 ## 2. Goals, non-goals and success metrics
 
-The project succeeds when a judge running on one T4 matches a frontier LLM judge closely enough to be trusted, at a small fraction of its cost, with calibrated scores you can act on.
+The project succeeds when a judge running on one T4 comes close enough to human gold labels and to a stronger reference LLM judge to be trusted, at a measured fraction of their cost, with calibrated scores you can act on.
+
+*Revised in Plan revision 1 (see `results.md`): the teacher that labels training data is `gemini-3.1-flash-lite`; a separate, stronger Gemini model is the reference judge and is run on the gold set only. The headline is reported against both human gold labels and the reference judge.*
 
 ### Goals
 
@@ -59,7 +61,7 @@ The project succeeds when a judge running on one T4 matches a frontier LLM judge
 ### Non-goals
 
 - Building a better agent. The agent is only the system under test.
-- Beating the frontier judge on every failure class. Matching it where it matters, and knowing where it loses, is the goal.
+- Beating the reference judge on every failure class. Matching it where it matters, and knowing where it loses, is the goal.
 - A general-purpose evaluation platform. Keep it to one agent domain done well.
 
 ### Success metrics
@@ -68,12 +70,12 @@ Targets below are starting points. Adjust them once you see your first baseline 
 
 | Area | Metric | Starting target |
 | --- | --- | --- |
-| Labels | Cohen's kappa, your labels vs LLM labels | Report it; this is the ceiling for the judge |
-| Accuracy | Macro-F1 across failure classes | Within 5 points of the frontier judge |
+| Labels | Cohen's kappa per class, your labels vs teacher (`gemini-3.1-flash-lite`) labels | Report it; this is the ceiling for the judge |
+| Accuracy | Macro-F1 across failure classes on the gold set | Report against human gold labels and as the gap to the reference judge; starting target within 5 points of the reference judge |
 | Binary detection | Recall on any-failure at 90% precision | 80% or higher |
 | Calibration | Expected calibration error (ECE) | Below 0.05 after calibration |
 | Triage | Share of traces needing human review at 95% precision on the auto-decided ones | Under 20% |
-| Cost | Cost per 1,000 traces vs LLM judge | 1–5% of the LLM judge |
+| Cost | Cost per 1,000 traces, per judge | Report the measured ratio per judge (vs the teacher and the reference judge) |
 | Latency | p95 judge latency on T4 | Encoder under 100 ms, SLM under 2 s |
 | Robustness | Macro-F1 drop when the agent model is swapped | Measure, then cut it by half with a fix |
 | Bias | Score shift from padding answers with irrelevant text | Report it before and after mitigation |
@@ -234,7 +236,10 @@ Train two judges of different kinds and compare them on the same test set; the c
 | A: Encoder | DeBERTa-v3-base or -large | Compressed trace, 512 tokens | Full fine-tune, fp16, batch 8–16 | Sigmoid per failure class + any-failure head |
 | B: SLM | Qwen2.5-1.5B or 3B instruct (or similar) | Full trace, up to 4,096 tokens | QLoRA, 4-bit base, rank 16–32 | Short rationale + JSON labels |
 | C: Baseline | Gradient boosting on hand-made features | Counts of tool errors, repeats, steps, argument mismatches | LightGBM on CPU | Per-class probability |
-| Reference | Frontier LLM judge | Full trace | Prompting only | Labels (the teacher) |
+| Teacher | `gemini-3.1-flash-lite` (API) | Full trace | Prompting only | Rationale + labels for train, val and calib (the teacher) |
+| Reference judge | A stronger Gemini model (`gemini-3.8-flash`, the pilot model) | Full trace | Prompting only, gold set only | Labels for the headline comparison only; never used for training |
+
+The reference judge reads gold data, so its predictions are produced only through `src/atl/eval/final_eval.py` and the guarded loader (see CLAUDE.md, gold test set rule), and are cached so the paid calls run once.
 
 Baseline C matters more than it looks. If simple features already catch loops and ignored errors, the interview story becomes "I used a model only where rules and features ran out."
 
@@ -257,7 +262,7 @@ Baseline C matters more than it looks. If simple features already catch loops an
 1. Baseline C, then Judge A, then Judge B; log everything to MLflow or Weights & Biases.
 2. Learning curve: train A and B on 10%, 25%, 50%, 100% of labels. Shows how much labelling the judge really needs.
 3. Teacher-label noise: train on LLM labels only vs LLM labels plus your corrections. Shows the value of human review.
-4. Per-class comparison: a table of F1 by class for A, B, C and the teacher. Expect each judge to win on different classes.
+4. Per-class comparison: a table of F1 by class for A, B, C, the teacher and the reference judge, all scored against human gold labels. Expect each judge to win on different classes.
 5. A hybrid: use C or A for cheap classes and B only where it clearly wins. This is often the best production answer.
 
 ## 7. Calibration and decision layer

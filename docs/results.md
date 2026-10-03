@@ -207,3 +207,33 @@ trace gold set, change the salt once, before freezing, and record it here. Never
 - **Correction on task 108:** the no-thinking agent *solved* it (reward 1.0). So it is
   ambiguous rather than impossible: the outcome depends on whether the simulated user asks for
   the return or only the refund amount. Still a review case; `env_outcome` still not ground truth.
+
+### 2026-10-03 — T4 benchmark 3: Llama 3.1 8B (same 10 retail tasks)
+
+| Agent (retail, same 10 tasks) | Env success | Runs/hour | s/call | Character of failures |
+| --- | --- | --- | --- | --- |
+| gemini-3.8-flash | 9/10 | 83.5 | ~5 | rare, subtle/ambiguous |
+| qwen3:8b thinking on | 5/10 | 11.3 | 27.2 | plausible but wrong (bad variant, give up early) |
+| qwen3:8b thinking off | 6/10 | 18.2 (≈50 w/o stalls) | 11.4 | sloppy: many tool errors, repeats |
+| llama3.1:8b | 2/10 | 46.7 | 4.9 | crude: placeholder args, malformed args, text tool calls |
+
+- **Placeholder arguments copied from tool docs.** tau2's docstrings give examples
+  ("order id, such as '#W0000000'", "item id, such as '1008292230'"); Llama passes them as real
+  values (`#W0000000`, `gift_card_0000000`, `1008292230`) — textbook F2 (ungrounded args).
+  **Shortcut risk:** a judge could learn "the literal 1008292230 means failure" instead of
+  "argument not grounded in earlier steps". Needs a check that F2 is still caught when the
+  ungrounded value looks plausible (e.g. per-pattern breakdown in eval).
+- **Malformed arguments:** lists passed as strings (`"['1008292230']"`) → env errors like
+  "[ not found" — F2 (malformed).
+- **Tool calls written as text:** in task 113 the agent wrote 8 JSON "calls" into its reply
+  (`{"name": "get_user_id_by_email", "parameters": ...}`) instead of calling tools; nothing ran
+  and the user asked for a transfer. A runtime-format failure the taxonomy does not name
+  directly (closest: F7 / F1). Decide in the taxonomy revision.
+- **Env success with bad behaviour (false negatives in the env label).** Tasks 65 and 62 scored
+  reward 1.0 while the agent attempted 3 exchanges with fabricated ids — they only "passed"
+  because every bogus write errored and the DB stayed unchanged, matching a task that needs no
+  writes. A judge trained on env outcomes would learn that this behaviour is fine. Strongest
+  evidence so far that labels must come from the labelling pipeline, not `env_outcome`.
+- The `user_stop_with_content` flag fired on 6/10 Llama runs: with weak agents most failures
+  are genuine and users still say "thanks ###STOP###", so the flag has low precision there. It
+  stays a review hint, mainly useful for strong-agent runs.

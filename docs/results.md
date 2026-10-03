@@ -399,3 +399,18 @@ has to be read from the project's AI Studio page.
   Colab time ≈ 1.5 h at ~50–70 runs/hour.
 - **Pass rule confirmed by the project owner on 2026-10-03, before any A/B run** (rules 1–3 above,
   unchanged). The test passes only if all three hold.
+
+### A/B test — interim observation (retail local-simulator arm only; verdict pending)
+
+- Ran on a second Google account (Drive copy of the cache and cost log). 18 of 20 runs recorded.
+- Local Qwen3 8B simulator (thinking off): env success 2/18 (11%); terminations `max_steps` 7,
+  `too_many_errors` 3, `user_stop` 8 (Gemini-simulator runs end almost always in `user_stop`);
+  6.0 min/run, 24 runs/hour.
+- **The simulator loops:** in 10 of 18 runs one customer message was repeated 13–46 times; only 4
+  runs contain a `###STOP###`. It also **invents facts** absent from its instructions (task 110:
+  purchase month and product details). These loops would surface as agent F6 (loop/stall) in the
+  data although the customer caused them — the label noise the A/B is designed to catch. Pass rule
+  3 (<= 2 simulator-caused disagreements) is very likely to fail; the formal verdict waits for the
+  Gemini arms, as pre-registered.
+- Cell bug (mine): the progress stats line in the A/B cell used `'{.*'`, which stops IPython from
+  expanding `{name}`, so it printed `{"runs": 0}`. Runs themselves were unaffected.

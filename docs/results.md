@@ -451,3 +451,22 @@ Pre-registered rule (all three must hold):
   seeds needs only its own arm (e.g. local with thinking on costs $0).
 
 **Consequence (Plan revision 1, decision 5):** trace target ~1,500 with a Gemini simulator.
+
+### 2026-10-03 — Free-tier limits (read from AI Studio) and a new free simulator candidate
+
+Project free-tier limits (RPM / TPM / RPD): gemini-3.1-flash-lite 15 / 250K / **500**;
+gemini-3.5-flash-lite 15 / 250K / 500; gemini-3.8-flash 5 / 250K / **20**;
+gemini-2.5-flash-lite 10 / 250K / 20; **gemma-4-31b-it 30 / 16K / 14,400** (Gemma is free-tier
+only, "free of charge"; free-tier content may be used to improve Google products — acceptable
+for synthetic tau2 data).
+
+What fits for free:
+- **Teacher labelling on 3.1 Flash-Lite free tier:** 500 requests/day -> ~1,500 traces plus the
+  second pass (~2,050–2,350 requests) in ~4–5 days; ~3,000 traces in ~9–10 days. No batch on free.
+- **Reference judge on 3.8 Flash free tier:** 20/day -> 25 days for 500 gold traces; or paid batch
+  ~$1.53–2.00 (fits the remaining ~₹205, before the 2027-01-01 price doubling).
+- **Simulator candidate: gemma-4-31b-it via the API.** Checked: accepts tau2's system message,
+  answers in character, ~4 s per call, always thinks briefly (cannot be disabled: the API rejects
+  `reasoning_effort`). At ~970 input tokens per simulator call (measured), 16K TPM allows ~16
+  calls/min ≈ 2 runs/min, above the T4 agent's ~1 run/min, so it should not be the bottleneck.
+  Untested as a customer: it needs one A/B arm against the existing Gemini arms ($0).

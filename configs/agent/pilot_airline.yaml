@@ -14,7 +14,7 @@ prompt_variant: tau2_default
 user_variant: tau2_default
 max_steps: 100
 # Cap on spend at the list prices below (real spend on a paid key; caching makes it lower).
-budget_usd: 10.0  # total across all runs sharing cost_log
+budget_usd: 5.0  # total across runs sharing cost_log; below the AI Studio cap (INR 500 ≈ $5.7)
 requests_per_minute: 60  # paid tier allows far more; keeps bursts polite
 prices:  # USD per 1M tokens, ai.google.dev/gemini-api/docs/pricing, checked 2026-10-03
   gemini/gemini-3.8-flash: {input: 0.75, output: 3.75}

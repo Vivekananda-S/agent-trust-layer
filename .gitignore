@@ -1,0 +1,28 @@
+# Data, models and run outputs are synced from the HF Hub / Drive, never committed.
+data/
+checkpoints/
+outputs/
+wandb/
+*.safetensors
+*.bin
+*.pt
+
+# Secrets
+.env
+.env.*
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+.ipynb_checkpoints/

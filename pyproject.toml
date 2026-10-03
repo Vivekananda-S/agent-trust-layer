@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "atl"
+version = "0.1.0"
+description = "Agent Trust Layer: a calibrated small judge model for AI agent execution traces."
+readme = "README.md"
+# Develop on 3.11; no upper cap because Colab's runtime Python moves ahead of us.
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Vivekananda Shonti" }]
+# Core deps stay minimal so the schema, splits and eval code install fast locally and in CI.
+dependencies = [
+    "pydantic>=2.7,<3",
+    "typer>=0.12,<1",
+    "pyyaml>=6.0,<7",
+]
+
+[project.optional-dependencies]
+# GPU training stack. Lower bounds for now; pin exact versions after the first Colab T4 run.
+train = [
+    "torch>=2.3",
+    "transformers>=4.44",
+    "peft>=0.12",
+    "bitsandbytes>=0.43",
+    "trl>=0.10",
+    "accelerate>=0.33",
+    "datasets>=2.20",
+    "wandb>=0.17",
+    "scikit-learn>=1.5",
+    "lightgbm>=4.4",
+]
+dev = [
+    "pytest>=8.2",
+    "ruff>=0.6",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/atl"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

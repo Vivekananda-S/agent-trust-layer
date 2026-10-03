@@ -162,3 +162,28 @@ def test_smoke_parallel_runs_with_mixed_variants(tmp_path: Path) -> None:
         assert (r["run_info"]["prompt_variant"], r["run_info"]["user_variant"]) == expected[:2]
         assert r["faults"] == [] and r["run_info"]["fault"] is None
     assert len({r["run_info"]["prompt_variant"] for r in records}) > 1  # the mix is really used
+
+
+@needs_tau2
+def test_failed_run_is_logged_not_silently_lost(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import atl.agent.run_tau2 as runner
+
+    real_fake = runner._fake_completion
+
+    def empty_agent(**kwargs: object) -> object:  # tau2 raises on an empty agent reply
+        response = real_fake(**kwargs)
+        if kwargs["model"] == "smoke/agent":
+            response.choices[0].message.content = None
+            response.choices[0].message.tool_calls = None
+        return response
+
+    monkeypatch.setattr(runner, "_fake_completion", empty_agent)
+    cfg = AgentRunConfig.from_yaml(CONFIGS[0]).as_smoke(tmp_path)
+    run(cfg, smoke=True)
+    run_dir = tmp_path / cfg.run_name
+    assert not (run_dir / "raw.jsonl").exists()
+    losses = [json.loads(x) for x in (run_dir / "failed_runs.jsonl").read_text().splitlines()]
+    assert [(x["task_id"], x["trial"]) for x in losses] == [("create_task_1", 0)]
+    assert "must have either content or tool_calls" in losses[0]["error"]

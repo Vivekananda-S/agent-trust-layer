@@ -15,6 +15,7 @@ once (useful with a local Ollama server that serves parallel requests).
 
 Outputs, under `<output_dir>/<run_name>/`:
     raw.jsonl     one {"run_info", "simulation", "faults"} record per run (full tau2 output)
+    failed_runs.jsonl  runs that raised (e.g. empty agent reply), so losses stay measurable
     traces.jsonl  normalised traces, regenerated from raw.jsonl at the end of every invocation
 """
 
@@ -254,9 +255,22 @@ def run(cfg: AgentRunConfig, *, smoke: bool = False) -> Path:
             logger.error("Stopping: %s", e)
             stop.set()
             return
-        except Exception:
+        except Exception as e:
+            # E.g. an empty agent reply: tau2 raises and the trajectory is lost. Recording the
+            # loss keeps it measurable (and resume retries the run next time).
             logger.exception("Run failed: task %s trial %d", task.id, trial)
+            prompt, user, faulty = choose_conditions(cfg, task.id, trial)
+            loss = {
+                "task_id": task.id,
+                "trial": trial,
+                "error": f"{type(e).__name__}: {e}"[:300],
+                "prompt_variant": prompt,
+                "user_variant": user,
+                "faulty": faulty,
+            }
             with lock:
+                with (run_dir / "failed_runs.jsonl").open("a", encoding="utf-8") as f:
+                    f.write(json.dumps(loss) + "\n")
                 failures += 1
                 if failures >= MAX_CONSECUTIVE_FAILURES:
                     logger.error("Stopping after %d consecutive failures", failures)

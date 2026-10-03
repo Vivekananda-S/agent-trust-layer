@@ -111,3 +111,22 @@ trace gold set, change the salt once, before freezing, and record it here. Never
 - A strong agent with clean tools succeeds ~80% here: too few failures for a judge to learn
   from. Failure diversity has to come from weaker agent models, prompt variants and injected
   faults, as planned.
+
+### 2026-10-03 — 20-trace pilot complete (gemini-3.8-flash agent and user simulator)
+
+| Domain | Traces | Env success | Cost/trace mean (max) | Steps median (max) | Agent input tokens median |
+| --- | --- | --- | --- | --- | --- |
+| retail | 10 | 9/10 | $0.060 ($0.103) | 21 (30) | 59.8k |
+| airline | 10 | 9/10 | $0.077 ($0.174) | 22 (50) | 68.7k |
+
+- All 20 traces pass strict schema validation (tool pairing included). Total spend $1.68.
+- Resume worked across the spend-cap interruption: finished runs were skipped, and the calls
+  made just before the cap error came back from the cache (4 cached, $0 re-spend).
+- Both failures were flagged for review, for different reasons:
+  - retail 108: under-specified task (see the correction above).
+  - airline 32: the agent priced the upgrade at $396 for 3 passengers, said it exceeded the
+    user's $100 limit, and the user left; the task expects a two-step change within budget.
+    Either a genuine agent failure (wrong price reasoning: F4 / F7 candidate) or a strict
+    task — a judgement for the phase 2 labelling, not something to infer from `env_outcome`.
+- No tool errors occurred: with clean tools a strong agent rarely fails (90%). The F5 (ignored
+  tool error) and F8 (injection) classes cannot appear without injected faults.

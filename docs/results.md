@@ -182,3 +182,28 @@ trace gold set, change the salt once, before freezing, and record it here. Never
 - One weak open model, one 10-task pilot: 4 genuine failures across F1, F2, F3, F7 (and F6
   candidate). Gemini produced 1 ambiguous failure in 20. Weak local agents are where the
   failure signal comes from; the strong API agent mainly supplies clean successes.
+
+### 2026-10-03 — T4 benchmark 2: Qwen3 8B with thinking off (same 10 retail tasks)
+
+| Qwen3 8B | Env success | Agent calls/run | s/call | Output tok/call (median) | Tool errors | Min/run |
+| --- | --- | --- | --- | --- | --- | --- |
+| thinking on | 5/10 | 11.1 | 27.2 | 489 | 4 | 5.3 (all runs) |
+| thinking off | 6/10 | 15.5 | 11.4 | 44 | 24 | 1.0–1.8 typical; 3.3 mean |
+
+- **Thinking off is ~4x faster per typical run** (8 of 10 runs took 1.0–1.8 min), but the mean
+  (3.3 min, 18.2 runs/hour) is inflated by two runs of ~11.5 min. In each, **one call hung for
+  ~607 s and then succeeded in seconds**: LiteLLM's default 600 s request timeout expired and
+  the retry worked. An occasional Ollama stall, not slow generation. Fix: `timeout: 120` in
+  the local configs (normal calls < 30 s; timeout is excluded from cache keys). Without stalls
+  the expected rate is ~45–55 runs/hour, so ~2,400 local traces ≈ 45–55 GPU hours.
+- Without thinking the agent is sloppier: more calls per run, 6x the tool errors, more repeated
+  identical calls (up to 3x). Useful failure material (F2, F5, F6).
+- **Every run starts with "User not found"**: Qwen3 guesses an email before asking for it. One
+  systematic pattern repeated across all traces; if the full dataset over-represents it, the
+  judge learns "this model's quirk", not "F2". Mix models and track per-pattern counts.
+- **Single-trial outcomes are noisy.** Thinking on vs off disagree on 7 of 10 tasks while the
+  success rate barely moves (5 → 6). 10-task comparisons cannot separate 50% from 60%; any
+  model comparison needs more tasks or trials, with confidence intervals.
+- **Correction on task 108:** the no-thinking agent *solved* it (reward 1.0). So it is
+  ambiguous rather than impossible: the outcome depends on whether the simulated user asks for
+  the return or only the refund amount. Still a review case; `env_outcome` still not ground truth.

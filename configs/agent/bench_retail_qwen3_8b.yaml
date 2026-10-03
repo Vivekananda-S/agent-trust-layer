@@ -11,6 +11,7 @@ agent_model: ollama_chat/qwen3:8b
 agent_llm_args:
   api_base: http://localhost:11434
   num_ctx: 32768  # required: Ollama's default would silently truncate the ~7k-token policy
+  timeout: 120  # occasional Ollama stalls otherwise wait LiteLLM's 600 s default before retrying
 user_model: gemini/gemini-3.8-flash  # same user simulator as every other run
 user_llm_args: {}
 prompt_variant: tau2_default

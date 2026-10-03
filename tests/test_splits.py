@@ -47,7 +47,7 @@ def cfg() -> SplitConfig:
         salt=SALT,
         fractions=FRACTIONS,
         heldout_model="model-c",
-        primary_domain="retail",
+        in_domains=["retail", "airline"],
     )
 
 
@@ -77,6 +77,13 @@ def traces() -> list[Trace]:
 def test_repo_config_loads() -> None:
     cfg = SplitConfig.from_yaml(Path(__file__).parents[1] / "configs" / "splits.yaml")
     assert cfg.fractions == FRACTIONS
+    assert cfg.in_domains == ["retail", "airline"]
+
+
+@pytest.mark.parametrize("in_domains", [[], ["retail", "retail"], [""]])
+def test_bad_in_domains_rejected(in_domains: list[str]) -> None:
+    with pytest.raises(ValueError):
+        SplitConfig(version=1, salt="s", fractions=FRACTIONS, in_domains=in_domains)
 
 
 @pytest.mark.parametrize(
@@ -89,7 +96,7 @@ def test_repo_config_loads() -> None:
 )
 def test_bad_fractions_rejected(fractions: dict[str, float]) -> None:
     with pytest.raises(ValueError):
-        SplitConfig(version=1, salt="s", fractions=fractions, primary_domain="retail")
+        SplitConfig(version=1, salt="s", fractions=fractions, in_domains=["retail"])
 
 
 # --- assignment ------------------------------------------------------------------------------
@@ -155,12 +162,19 @@ def test_trace_routing(cfg: SplitConfig, traces: list[Trace]) -> None:
     }
 
 
+def test_every_in_domain_is_hash_split(cfg: SplitConfig) -> None:
+    traces = [make_trace("a", "airline_task_x", domain="airline")]
+    manifest = build_manifest(traces, cfg)
+    expected = assign_split("airline_task_x", SALT, FRACTIONS)
+    assert manifest.task_splits["airline_task_x"] == expected != "ood"
+
+
 def test_trainable_splits_exclude_heldout_and_ood(cfg: SplitConfig, traces: list[Trace]) -> None:
     manifest = build_manifest(traces, cfg)
     for name in ("train", "val", "calib"):
         for t in load_split(traces, manifest, name):
             assert t.agent_model != "model-c"
-            assert t.meta.domain == "retail"
+            assert t.meta.domain in cfg.in_domains
 
 
 def test_task_in_two_domains_rejected(cfg: SplitConfig) -> None:

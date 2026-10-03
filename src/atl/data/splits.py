@@ -10,7 +10,7 @@ Rules (see CLAUDE.md, "The gold test set rule"):
 - Protected data (`test`, `gold`, `heldout_model`, `ood`) is read only by `atl.eval.final_eval`,
   through `load_protected_split` and `load_gold`.
 
-Trace routing: traces outside the primary domain go to `ood`; traces from the held-out agent
+Trace routing: traces outside the in-domain list go to `ood`; traces from the held-out agent
 model go to `heldout_model` if their task is a test task and are dropped otherwise (so the
 drift test is not confounded by tasks seen in training); everything else follows its task.
 """
@@ -65,10 +65,12 @@ class _SplitSettings(BaseModel):
     salt: str = Field(min_length=1)
     fractions: dict[str, float]
     heldout_model: str | None = None
-    primary_domain: str = Field(min_length=1)
+    in_domains: list[str] = Field(min_length=1)  # every other domain is out-of-domain (ood)
 
     @model_validator(mode="after")
     def _check_fractions(self) -> _SplitSettings:
+        if len(set(self.in_domains)) != len(self.in_domains) or "" in self.in_domains:
+            raise ValueError("in_domains must be unique, non-empty names")
         if set(self.fractions) != set(TASK_SPLITS):
             raise ValueError(f"fractions must have exactly the keys {TASK_SPLITS}")
         if any(f <= 0 for f in self.fractions.values()):
@@ -119,7 +121,7 @@ def trace_split(trace: Trace, manifest: SplitManifest) -> str | None:
             f"task {trace.task_id!r} (trace {trace.trace_id!r}) is not in the split manifest; "
             "extend it with `atl-splits make --update`"
         )
-    is_ood = trace.meta.domain != manifest.primary_domain
+    is_ood = trace.meta.domain not in manifest.in_domains
     if is_ood != (task_split == "ood"):
         raise LeakageError(
             f"trace {trace.trace_id!r}: domain {trace.meta.domain!r} disagrees with "
@@ -156,7 +158,7 @@ def build_manifest(
         if task_id in task_splits:
             continue
         (domain,) = domains
-        if domain == cfg.primary_domain:
+        if domain in cfg.in_domains:
             task_splits[task_id] = assign_split(task_id, cfg.salt, cfg.fractions)
         else:
             task_splits[task_id] = "ood"

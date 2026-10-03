@@ -9,6 +9,7 @@ fractions:
   test: 0.15
 # Agent model kept out of training entirely (drift test). Set once agent models are chosen.
 heldout_model: null
-# Traces from any other domain go to the `ood` split.
-primary_domain: retail
+# tau2-bench domains used for train/val/calib/test. Traces from any other domain
+# (e.g. banking_knowledge) go to the `ood` split.
+in_domains: [retail, airline]
 manifest_path: splits/splits_v1.json

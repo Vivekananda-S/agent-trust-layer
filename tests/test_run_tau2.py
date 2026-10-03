@@ -114,6 +114,8 @@ def test_run_stats(tmp_path: Path) -> None:
             "agent_cost": 0.05,
             "user_cost": 0.01,
             "termination_reason": "user_stop",
+            "start_time": "2026-10-03T10:00:00",
+            "end_time": "2026-10-03T10:02:00",
         },
         {
             "reward_info": {"reward": 0.0},
@@ -121,6 +123,8 @@ def test_run_stats(tmp_path: Path) -> None:
             "agent_cost": 0.0,
             "user_cost": 0.02,
             "termination_reason": "max_steps",
+            "start_time": "2026-10-03T10:00:00",
+            "end_time": "2026-10-03T10:04:00",
         },
     ]
     (tmp_path / "raw.jsonl").write_text("".join(json.dumps({"simulation": s}) + "\n" for s in sims))
@@ -130,7 +134,7 @@ def test_run_stats(tmp_path: Path) -> None:
         "env_success_rate": 0.5,
         "terminations": {"user_stop": 1, "max_steps": 1},
         "mean_minutes_per_run": 3.0,  # (120 + 240) / 2 s
-        "runs_per_hour": 20.0,  # 2 runs in 360 s
+        "runs_per_hour_wall_clock": 30.0,  # 2 overlapping runs, 10:00 -> 10:04
         "mean_cost_usd": 0.04,  # (0.06 + 0.02) / 2
         "flagged_for_review": 1,
     }

@@ -28,6 +28,7 @@ import subprocess
 import threading
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -434,6 +435,11 @@ def run_stats(run_dir: Path) -> dict[str, Any]:
     scored = [r for r in rewards if r is not None]
     seconds = sum(s.get("duration") or 0.0 for s in sims)
     cost = sum((s.get("agent_cost") or 0.0) + (s.get("user_cost") or 0.0) for s in sims)
+    # Wall clock from the first start to the last end, so parallel runs are not under-counted
+    # (summing per-run durations would divide throughput by the concurrency).
+    starts = [datetime.fromisoformat(s["start_time"]) for s in sims if s.get("start_time")]
+    ends = [datetime.fromisoformat(s["end_time"]) for s in sims if s.get("end_time")]
+    wall = (max(ends) - min(starts)).total_seconds() if starts and ends else 0.0
     flags_path = run_dir / "review_flags.jsonl"
     flagged = len(flags_path.read_text().splitlines()) if flags_path.exists() else 0
     return {
@@ -443,7 +449,7 @@ def run_stats(run_dir: Path) -> dict[str, Any]:
         else None,
         "terminations": dict(Counter(s.get("termination_reason") for s in sims)),
         "mean_minutes_per_run": round(seconds / len(sims) / 60, 2),
-        "runs_per_hour": round(len(sims) / seconds * 3600, 1) if seconds else None,
+        "runs_per_hour_wall_clock": round(len(sims) / wall * 3600, 1) if wall else None,
         "mean_cost_usd": round(cost / len(sims), 4),
         "flagged_for_review": flagged,
     }

@@ -14,7 +14,8 @@ agent_llm_args:
   timeout: 120
   reasoning_effort: none
 user_model: gemini/gemma-4-31b-it  # arm C: Gemma 4 31B via the Gemini API (free tier only)
-user_llm_args: {}  # Gemma always thinks briefly; the API rejects reasoning_effort
+user_llm_args:  # Gemma always thinks briefly; the API rejects reasoning_effort
+  num_retries: 8  # free-tier Gemma returned ~56% HTTP 500/503; transport only, not in cache keys
 max_concurrency: 3  # needs OLLAMA_NUM_PARALLEL=3 (set in the notebook)
 max_steps: 100
 budget_usd: 5.0  # shared cost_log; this arm is free (local agent + free-tier Gemma)

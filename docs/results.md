@@ -484,3 +484,12 @@ What fits for free:
   3. hand review of every Gemma/Gemini disagreement finds <= 2 caused by the simulator;
   4. **new:** the customer repeats one message >= 5 times in <= 10% of Gemma runs (the Gemini arms:
      0/38). Added because checks 1–2 missed the local simulator's loops in the first test.
+- **Run 1 of arm C (2026-10-03):** free-tier Gemma was unstable — AI Studio showed 128 HTTP 500 and
+  8 HTTP 503 with ~44% of calls succeeding. Retail: 5/20 runs recorded, all `user_stop`, 10 min/run.
+- **Survivorship bias:** with tau2's default 3 retries a customer turn still fails ~10% of the time
+  (0.56^4), so an 8-turn run survives ~43% and a 20-turn run ~12%. Completed runs would be the
+  short, easy ones: success inflated, loops (long runs) hidden — check 4 could pass falsely.
+- **Fix (transport only, same test):** `num_retries: 8` for the simulator (turn failure ~0.5%,
+  20-turn survival ~90%). `num_retries` is excluded from cache keys; tau2 keeps a provided value.
+- **Proposed completeness condition before judging:** >= 36 of the 40 planned runs recorded;
+  otherwise rerun (resume fills only missing runs) before evaluating.

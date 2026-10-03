@@ -499,3 +499,5 @@ What fits for free:
   Completed runs (indicative only, survivorship-biased): 0 repeated customer messages, 3–15
   customer turns (similar to the Gemini arm), env outcome agrees with the Gemini arm on 8/10.
   `max_concurrency` for the Gemma arms lowered from 3 to 2 (throughput only, same test).
+- **Completeness condition confirmed by the project owner on 2026-10-03:** arm C is judged only
+  when >= 36 of its 40 runs are recorded.

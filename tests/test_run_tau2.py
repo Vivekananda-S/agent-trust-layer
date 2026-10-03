@@ -10,10 +10,13 @@ import pytest
 from atl.agent.run_tau2 import (
     DEFAULT_TAU2_CHECKOUT,
     AgentRunConfig,
+    ContextOverflow,
     Price,
+    _guard_context,
     _price,
     _select_tasks,
     run,
+    run_stats,
 )
 
 CONFIGS = sorted((Path(__file__).parents[1] / "configs" / "agent").glob("*.yaml"))
@@ -82,3 +85,52 @@ def test_smoke_run_end_to_end(tmp_path: Path) -> None:
     log = [json.loads(x) for x in cfg.cost_log.read_text().splitlines()]
     assert [e["cached"] for e in log].count(False) == 4
     assert [e["cached"] for e in log].count(True) == 4
+
+
+def test_ollama_model_without_num_ctx_rejected() -> None:
+    with pytest.raises(ValueError, match="num_ctx"):
+        _cfg(agent_model="ollama_chat/qwen3:8b", agent_llm_args={"api_base": "http://x"})
+    assert _cfg(agent_model="ollama_chat/qwen3:8b", agent_llm_args={"num_ctx": 32768})
+
+
+def test_context_guard() -> None:
+    calls: list[dict[str, object]] = []
+    guarded = _guard_context(lambda **kw: calls.append(kw) or "ok")
+    small = [{"role": "user", "content": "x" * 3_000}]
+    huge = [{"role": "user", "content": "x" * 90_000}]  # >= 30k tokens at 3 chars/token
+    assert guarded(model="ollama_chat/m", messages=small, num_ctx=32768) == "ok"
+    with pytest.raises(ContextOverflow, match="num_ctx=32768"):
+        guarded(model="ollama_chat/m", messages=huge, num_ctx=32768)
+    assert guarded(model="gemini/m", messages=huge) == "ok"  # no num_ctx: hosted model, no guard
+    assert len(calls) == 2
+
+
+def test_run_stats(tmp_path: Path) -> None:
+    sims = [
+        {
+            "reward_info": {"reward": 1.0},
+            "duration": 120.0,
+            "agent_cost": 0.05,
+            "user_cost": 0.01,
+            "termination_reason": "user_stop",
+        },
+        {
+            "reward_info": {"reward": 0.0},
+            "duration": 240.0,
+            "agent_cost": 0.0,
+            "user_cost": 0.02,
+            "termination_reason": "max_steps",
+        },
+    ]
+    (tmp_path / "raw.jsonl").write_text("".join(json.dumps({"simulation": s}) + "\n" for s in sims))
+    (tmp_path / "review_flags.jsonl").write_text('{"trace_id": "x", "flags": ["f"]}\n')
+    assert run_stats(tmp_path) == {
+        "runs": 2,
+        "env_success_rate": 0.5,
+        "terminations": {"user_stop": 1, "max_steps": 1},
+        "mean_minutes_per_run": 3.0,  # (120 + 240) / 2 s
+        "runs_per_hour": 20.0,  # 2 runs in 360 s
+        "mean_cost_usd": 0.04,  # (0.06 + 0.02) / 2
+        "flagged_for_review": 1,
+    }
+    assert run_stats(tmp_path / "missing") == {"runs": 0}

@@ -20,12 +20,13 @@ import logging
 import os
 import random
 import subprocess
+from collections import Counter
 from pathlib import Path
 from typing import Annotated, Any
 
 import typer
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from atl.agent.llm_cache import BudgetExceeded, CachedCompletion, cache_namespace
 from atl.traces.adapters.tau2 import RunInfo, convert_raw_file, review_flags
@@ -39,6 +40,14 @@ DEFAULT_TAU2_CHECKOUT = Path("external/tau2-bench")
 SMOKE_DOMAIN = "mock"
 SMOKE_TASK_IDS = ["create_task_1"]
 MAX_CONSECUTIVE_FAILURES = 3  # e.g. a free-tier daily quota is exhausted: stop, resume tomorrow
+# Local (Ollama) context guard. Ollama silently truncates prompts longer than `num_ctx`, which
+# would cut the policy out of the prompt and turn every run into a fake failure.
+CHARS_PER_TOKEN_LOWER_BOUND = 3.0  # conservative: real text and JSON average ~4 chars per token
+OUTPUT_TOKEN_RESERVE = 4096  # room for the reply, including thinking tokens
+
+
+class ContextOverflow(RuntimeError):
+    """Raised before a local-model call whose prompt may not fit in `num_ctx`."""
 
 
 class Price(BaseModel):
@@ -74,6 +83,19 @@ class AgentRunConfig(BaseModel):
     output_dir: Path = Path("data/traces")
     cache_dir: Path = Path("data/llm_cache")
     cost_log: Path = Path("data/costs.jsonl")
+
+    @model_validator(mode="after")
+    def _local_models_need_num_ctx(self) -> AgentRunConfig:
+        for model, args in (
+            (self.agent_model, self.agent_llm_args),
+            (self.user_model, self.user_llm_args),
+        ):
+            if model.startswith("ollama") and not args.get("num_ctx"):
+                raise ValueError(
+                    f"{model}: set num_ctx in its llm_args; Ollama's small default context "
+                    "silently truncates the policy"
+                )
+        return self
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> AgentRunConfig:
@@ -115,7 +137,7 @@ def run(cfg: AgentRunConfig, *, smoke: bool = False) -> Path:
     raw_path = run_dir / "raw.jsonl"
 
     cached = CachedCompletion(
-        _fake_completion if smoke else litellm.completion,
+        _fake_completion if smoke else _guard_context(litellm.completion),
         cache_dir=cfg.cache_dir,
         cost_log=cfg.cost_log,
         budget_usd=cfg.budget_usd,
@@ -148,7 +170,7 @@ def run(cfg: AgentRunConfig, *, smoke: bool = False) -> Path:
             token = cache_namespace.set(f"{cfg.run_name}/{task.id}/{trial}")
             try:
                 sim = run_single_task(tau2_cfg, task, seed=seed, evaluation_type=EvaluationType.ENV)
-            except BudgetExceeded as e:
+            except (BudgetExceeded, ContextOverflow) as e:
                 logger.error("Stopping: %s", e)
                 return _finish(run_dir, raw_path, cached)
             except Exception:
@@ -249,6 +271,25 @@ def _write_review_flags(raw_path: Path, out: Path) -> int:
     return len(rows)
 
 
+def _guard_context(completion_fn: Any) -> Any:
+    """Wrap `completion` so calls with `num_ctx` refuse prompts that may not fit."""
+
+    def guarded(**kwargs: Any) -> Any:
+        num_ctx = kwargs.get("num_ctx")
+        if num_ctx:
+            chars = len(json.dumps(kwargs.get("messages"), default=str))
+            chars += len(json.dumps(kwargs.get("tools"), default=str))
+            worst_case = chars / CHARS_PER_TOKEN_LOWER_BOUND + OUTPUT_TOKEN_RESERVE
+            if worst_case > num_ctx:
+                raise ContextOverflow(
+                    f"{kwargs.get('model')}: prompt of {chars} chars may need ~{worst_case:.0f} "
+                    f"tokens incl. reply, over num_ctx={num_ctx}; raise num_ctx"
+                )
+        return completion_fn(**kwargs)
+
+    return guarded
+
+
 def _price(response: Any, prices: dict[str, Price], fallback: Any) -> float:
     """Price a response from the config table, else LiteLLM's table (may raise if unknown)."""
     model = str(response.model or "").removeprefix("models/")
@@ -296,6 +337,42 @@ def _main() -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
+
+
+def run_stats(run_dir: Path) -> dict[str, Any]:
+    """Throughput, outcome and cost summary of a run directory (raw.jsonl + review flags)."""
+    sims = []
+    raw_path = run_dir / "raw.jsonl"
+    if raw_path.exists():
+        with raw_path.open(encoding="utf-8") as f:
+            sims = [json.loads(line)["simulation"] for line in f if line.strip()]
+    if not sims:
+        return {"runs": 0}
+    rewards = [(s.get("reward_info") or {}).get("reward") for s in sims]
+    scored = [r for r in rewards if r is not None]
+    seconds = sum(s.get("duration") or 0.0 for s in sims)
+    cost = sum((s.get("agent_cost") or 0.0) + (s.get("user_cost") or 0.0) for s in sims)
+    flags_path = run_dir / "review_flags.jsonl"
+    flagged = len(flags_path.read_text().splitlines()) if flags_path.exists() else 0
+    return {
+        "runs": len(sims),
+        "env_success_rate": round(sum(r == 1.0 for r in scored) / len(scored), 3)
+        if scored
+        else None,
+        "terminations": dict(Counter(s.get("termination_reason") for s in sims)),
+        "mean_minutes_per_run": round(seconds / len(sims) / 60, 2),
+        "runs_per_hour": round(len(sims) / seconds * 3600, 1) if seconds else None,
+        "mean_cost_usd": round(cost / len(sims), 4),
+        "flagged_for_review": flagged,
+    }
+
+
+@app.command("stats")
+def stats_cmd(
+    run_dir: Annotated[Path, typer.Option("--run-dir", help="data/traces/<run>.")],
+) -> None:
+    """Print throughput, success rate and cost for a run directory."""
+    logger.info("%s: %s", run_dir, json.dumps(run_stats(run_dir)))
 
 
 @app.command("fetch-data")

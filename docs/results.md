@@ -130,3 +130,18 @@ trace gold set, change the salt once, before freezing, and record it here. Never
     task — a judgement for the phase 2 labelling, not something to infer from `env_outcome`.
 - No tool errors occurred: with clean tools a strong agent rarely fails (90%). The F5 (ignored
   tool error) and F8 (injection) classes cannot appear without injected faults.
+
+### 2026-10-03 — Decision: open agent models on the Colab T4 via Ollama
+
+- Projected full-dataset cost on Gemini alone was $40–70. Plan instead: weak, mid and held-out
+  agents run locally on the Colab T4 (Ollama, 4-bit GGUF, $0), the strong agent stays on Gemini
+  (~300 traces), and the user simulator stays on Gemini for every run (label quality; ~5% of
+  tokens). Estimated total ~$25–35 plus free Colab GPU hours.
+- **Silent truncation guard.** Ollama's default context is a few thousand tokens and it
+  truncates longer prompts without an error; the retail policy alone is ~7k tokens. Unguarded,
+  every local run would "fail" because the agent never saw the rules — fake failures at scale.
+  Guards: configs with an Ollama model must set `num_ctx` (validation error otherwise), and
+  each local call is refused if a conservative estimate (3 chars/token + 4k reply reserve)
+  exceeds `num_ctx`. Largest pilot prompt was 13.1k tokens, so `num_ctx: 32768` leaves room.
+- Throughput baseline on Gemini (pilot): 63–84 runs/hour. The T4 benchmark (same 10 retail
+  tasks, Qwen3 8B and Llama 3.1 8B) decides how many local traces are realistic per week.

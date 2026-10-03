@@ -1,0 +1,26 @@
+# Colab T4 benchmark: local agent via Ollama on the same 10 retail tasks as the Gemini pilot
+# (task_sample_seed 0), so success rates are comparable. Measures traces/hour and failure mix.
+# Run from notebooks/collect_colab.ipynb (starts Ollama and pulls the model first).
+run_name: bench_retail_qwen3_8b_u38flash
+domain: retail
+num_tasks: 10
+task_sample_seed: 0
+num_trials: 1
+seed: 300
+agent_model: ollama_chat/qwen3:8b
+agent_llm_args:
+  api_base: http://localhost:11434
+  num_ctx: 32768  # required: Ollama's default would silently truncate the ~7k-token policy
+user_model: gemini/gemini-3.8-flash  # same user simulator as every other run
+user_llm_args: {}
+prompt_variant: tau2_default
+user_variant: tau2_default
+max_steps: 100
+budget_usd: 5.0  # shared cost_log; only the Gemini user simulator costs money here
+requests_per_minute: 60
+prices:  # USD per 1M tokens
+  ollama_chat/qwen3:8b: {input: 0.0, output: 0.0}  # local GPU
+  gemini/gemini-3.8-flash: {input: 0.75, output: 3.75}
+output_dir: data/traces
+cache_dir: data/llm_cache
+cost_log: data/costs.jsonl

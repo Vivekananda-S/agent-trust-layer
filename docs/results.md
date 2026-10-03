@@ -501,3 +501,35 @@ What fits for free:
   `max_concurrency` for the Gemma arms lowered from 3 to 2 (throughput only, same test).
 - **Completeness condition confirmed by the project owner on 2026-10-03:** arm C is judged only
   when >= 36 of its 40 runs are recorded.
+
+### A/B test, arm C (Gemma 4 31B simulator) — verdict: PASS (borderline on check 3)
+
+Run 3 completed the arm: 36/40 runs recorded (17 retail, 19 airline) — completeness met.
+
+| Check (pre-registered) | Result |
+| --- | --- |
+| Completeness >= 36/40 | 36/40 — met |
+| 1. Outcome agreement Gemma vs Gemini >= Gemini-vs-Gemini - 0.10 | 26/34 = 0.76 vs bar 0.57 — pass |
+| 2. Flag rate <= 1.5x Gemini | 15/36 = 0.42 vs limit 0.63 — pass |
+| 3. Simulator-caused disagreements <= 2 (hand review of 8) | 2 — pass, at the limit |
+| 4. Loop rate <= 10% | **0/36** (local Qwen simulator: 17/37) — pass |
+
+Hand review of the 8 disagreements:
+- **Simulator-caused (2):** retail 21 t1 — the customer invented a fact ("I have the shoes right
+  here, so they must be delivered") and escalated to a transfer (probable); airline 5 t1 — told to
+  accept after a few insistent attempts, the customer transferred instead (clear).
+- **Not simulator-caused (6):** retail 103 t1 and 7 t0 (agent-driven: unavailable option accepted
+  reasonably; the agent exchanged the wrong items, the customer corrected it); retail 108 t1 (the
+  known ambiguous task; both readings plausible); retail 7 t1 (the *Gemini* customer broke its
+  instruction to exchange only the lamp; Gemma followed it); airline 38 t0/t1 (outcome decided by
+  whether the agent sent a certificate).
+- **Minor deviations not counted (outcome not affected):** retail 103 t1 accepted "red not
+  available" quickly; airline 38 t1 backed off its "adamant: 3 passengers" instruction.
+- **Sensitivity:** counting either minor deviation would make check 3 fail. The pass is real but
+  thin. The reference simulator is not perfect either (2 instruction errors by Gemini above).
+
+**Throughput is the real constraint.** Customer turns take a median ~40 s wall clock (p90 84–100 s,
+retries and free-tier queueing included; a quiet-time probe gave ~6 s), and **84–87% of run time is
+spent waiting on Gemma**. Measured 7.4–7.7 runs/hour with 2 parallel runs (Gemini simulator: ~65).
+The T4 idles while waiting but still consumes Colab GPU hours. At this rate 1,500 traces need
+~200 Colab hours and 3,000 ~400 — far beyond a free tier of ~15–30 GPU hours/week.

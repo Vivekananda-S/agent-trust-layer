@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "trace_id": "t_000123",
+  "task_id": "retail_task_042",
+  "agent_model": "model-a",
+  "prompt_variant": "careful_v1",
+  "policy_doc_id": "retail_policy_v1",
+  "task": "User wants to return order #4411",
+  "steps": [
+    {"type": "user", "content": "I want to return order 4411."},
+    {"type": "thought", "content": "I should look up the order first."},
+    {"type": "tool_call", "tool": "get_order", "args": {"order_id": "4411"}, "call_id": "c1"},
+    {"type": "tool_result", "tool": "get_order", "content": "{\"status\": \"delivered\"}", "error": null, "call_id": "c1"},
+    {"type": "assistant", "content": "Your return for order 4411 has been started."}
+  ],
+  "env_outcome": {"task_success": true},
+  "usage": {"input_tokens": 5120, "output_tokens": 640, "latency_ms": 8200},
+  "meta": {
+    "domain": "retail",
+    "user_variant": "cooperative",
+    "fault": null,
+    "seed": 7,
+    "created_at": "2026-10-03T10:00:00Z"
+  }
+}

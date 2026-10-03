@@ -1,0 +1,36 @@
+{
+  "id": "sim-0001",
+  "task_id": "42",
+  "start_time": "2026-10-03T10:00:00",
+  "end_time": "2026-10-03T10:00:09",
+  "duration": 8.5,
+  "termination_reason": "user_stop",
+  "agent_cost": 0.01,
+  "user_cost": 0.002,
+  "reward_info": {"reward": 0.0},
+  "seed": 300,
+  "messages": [
+    {"role": "system", "content": "policy text"},
+    {"role": "assistant", "content": "Hi! How can I help you today?", "tool_calls": null},
+    {"role": "user", "content": "I want to return order #W123.", "tool_calls": null},
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {"id": "c1", "name": "get_order_details", "arguments": {"order_id": "#W123"}, "requestor": "assistant"},
+        {"id": "c2", "name": "get_user_details", "arguments": {"user_id": "u9"}, "requestor": "assistant"}
+      ],
+      "usage": {"prompt_tokens": 1000, "completion_tokens": 40},
+      "raw_data": {"choices": [{"message": {"reasoning_content": "Look up order and user."}}]}
+    },
+    {"role": "tool", "id": "c2", "content": "{\"user_id\": \"u9\"}", "requestor": "assistant", "error": false},
+    {"role": "tool", "id": "c1", "content": "Error: order not found", "requestor": "assistant", "error": true},
+    {
+      "role": "assistant",
+      "content": "Your return has been processed.",
+      "tool_calls": null,
+      "usage": {"prompt_tokens": 1200, "completion_tokens": 15}
+    },
+    {"role": "user", "content": "Thanks! ###STOP###", "tool_calls": null}
+  ]
+}

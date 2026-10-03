@@ -145,3 +145,22 @@ trace gold set, change the salt once, before freezing, and record it here. Never
   exceeds `num_ctx`. Largest pilot prompt was 13.1k tokens, so `num_ctx: 32768` leaves room.
 - Throughput baseline on Gemini (pilot): 63–84 runs/hour. The T4 benchmark (same 10 retail
   tasks, Qwen3 8B and Llama 3.1 8B) decides how many local traces are realistic per week.
+
+### 2026-10-03 — T4 benchmark 1: Qwen3 8B (thinking on) via Ollama, same 10 retail tasks
+
+| Agent | Env success | Runs/hour | Cost/run | Tool errors |
+| --- | --- | --- | --- | --- |
+| gemini-3.8-flash (API) | 9/10 | 83.5 | $0.060 | 0 |
+| qwen3:8b, T4, thinking on | 5/10 | 11.3 | $0.0097 (user simulator only) | several |
+
+- Setup verified on the GPU side: `ollama ps` 100% GPU, 10.0 GB, context 32768; Ollama's own
+  log reports `truncated = 0`. The 50% success is agent behaviour, not a truncated policy.
+- Qwen3 8B produces the failures Gemini does not: tool errors such as "Variant not found",
+  "Non-pending order cannot be cancelled", "Payment method not found", "Non-delivered order
+  cannot be returned" — raw material for F2 (bad arguments), F3 (policy) and F5 (ignored error).
+- Too slow as is: 177 LLM calls for 10 runs, ~18 s per call, 5.3 min per run. At 11 runs/hour,
+  2,400 local traces would need ~220 GPU hours. Hypothesis: thinking tokens dominate; the next
+  benchmark is the same model and tasks with thinking off (`reasoning_effort: none`, which
+  LiteLLM maps to Ollama `think=false`).
+- The user simulator is the only cost of a local run: ~$0.01/run on 3.8-flash, ~$23 for 2,400
+  runs. Flash-Lite would be ~3x cheaper; it needs a quality check before switching.

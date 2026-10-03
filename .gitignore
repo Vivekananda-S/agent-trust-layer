@@ -1,6 +1,7 @@
 # Data, models and run outputs are synced from the HF Hub / Drive, never committed.
 # Anchored with "/" so the src/atl/data/ package is not ignored.
 /data/
+/external/
 checkpoints/
 outputs/
 wandb/

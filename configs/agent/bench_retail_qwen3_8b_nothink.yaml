@@ -15,8 +15,6 @@ agent_llm_args:
   reasoning_effort: none  # LiteLLM maps this to Ollama think=false (qwen3 thinks by default)
 user_model: gemini/gemini-3.8-flash  # same user simulator as every other run
 user_llm_args: {}
-prompt_variant: tau2_default
-user_variant: tau2_default
 max_steps: 100
 budget_usd: 5.0  # shared cost_log; only the Gemini user simulator costs money here
 requests_per_minute: 60

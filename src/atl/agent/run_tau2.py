@@ -6,10 +6,15 @@ Usage:
 
 Every LLM call (agent and user simulator) goes through `CachedCompletion`: disk cache, cost
 log, budget cap and rate limit. Runs resume: (task, trial) pairs already in the raw file are
-skipped, so a killed session loses at most the run in progress.
+skipped, so a killed session loses at most the runs in progress.
+
+Diversity: each (task, trial) draws its prompt variant, user variant and whether tool faults
+are injected from the config's weights, seeded by (seed, task, trial), so a run's conditions
+are reproducible and recorded in its RunInfo. `max_concurrency` runs several simulations at
+once (useful with a local Ollama server that serves parallel requests).
 
 Outputs, under `<output_dir>/<run_name>/`:
-    raw.jsonl     one {"run_info", "simulation"} record per run (full tau2 output, for audit)
+    raw.jsonl     one {"run_info", "simulation", "faults"} record per run (full tau2 output)
     traces.jsonl  normalised traces, regenerated from raw.jsonl at the end of every invocation
 """
 
@@ -20,7 +25,9 @@ import logging
 import os
 import random
 import subprocess
+import threading
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -28,7 +35,15 @@ import typer
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from atl.agent.faults import FaultConfig, FaultInjector, active_injector, install_fault_hook
 from atl.agent.llm_cache import BudgetExceeded, CachedCompletion, cache_namespace
+from atl.agent.variants import (
+    AGENT_NAMES,
+    PromptVariant,
+    UserVariant,
+    register_prompt_variants,
+    with_user_variant,
+)
 from atl.traces.adapters.tau2 import RunInfo, convert_raw_file, review_flags
 from atl.traces.schema import save_traces
 
@@ -59,7 +74,7 @@ class Price(BaseModel):
 
 
 class AgentRunConfig(BaseModel):
-    """One collection run: one domain, one agent model, one prompt and user variant."""
+    """One collection run: one domain and agent model; prompt/user/fault conditions are mixed."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -74,8 +89,12 @@ class AgentRunConfig(BaseModel):
     agent_llm_args: dict[str, Any] = Field(default_factory=dict)
     user_model: str
     user_llm_args: dict[str, Any] = Field(default_factory=dict)
-    prompt_variant: str = "tau2_default"
-    user_variant: str = "tau2_default"
+    prompt_variants: dict[PromptVariant, float] = Field(
+        default_factory=lambda: {"tau2_default": 1.0}
+    )
+    user_variants: dict[UserVariant, float] = Field(default_factory=lambda: {"tau2_default": 1.0})
+    faults: FaultConfig | None = None  # None = never inject tool faults
+    max_concurrency: int = Field(default=1, ge=1)
     max_steps: int = Field(default=100, ge=1)
     budget_usd: float = Field(ge=0)
     requests_per_minute: float | None = Field(default=None, gt=0)
@@ -83,6 +102,13 @@ class AgentRunConfig(BaseModel):
     output_dir: Path = Path("data/traces")
     cache_dir: Path = Path("data/llm_cache")
     cost_log: Path = Path("data/costs.jsonl")
+
+    @model_validator(mode="after")
+    def _weights_valid(self) -> AgentRunConfig:
+        for name, weights in (("prompt", self.prompt_variants), ("user", self.user_variants)):
+            if not weights or any(w < 0 for w in weights.values()) or sum(weights.values()) <= 0:
+                raise ValueError(f"{name}_variants needs non-negative weights with a positive sum")
+        return self
 
     @model_validator(mode="after")
     def _local_models_need_num_ctx(self) -> AgentRunConfig:
@@ -111,6 +137,7 @@ class AgentRunConfig(BaseModel):
                 "domain": SMOKE_DOMAIN,
                 "task_ids": SMOKE_TASK_IDS,
                 "num_trials": 1,
+                "max_concurrency": 1,
                 "agent_model": "smoke/agent",
                 "user_model": "smoke/user",
                 "requests_per_minute": None,
@@ -129,6 +156,8 @@ def run(cfg: AgentRunConfig, *, smoke: bool = False) -> Path:
     # TAU2_DATA_DIR is set before tau2 reads it at import time.
     import litellm
     import tau2.utils.llm_utils as tau2_llm
+    from tau2.data_model.message import ToolMessage
+    from tau2.environment.environment import Environment
     from tau2.evaluator.evaluator import EvaluationType
     from tau2.run import TextRunConfig, get_tasks, run_single_task
 
@@ -147,55 +176,108 @@ def run(cfg: AgentRunConfig, *, smoke: bool = False) -> Path:
         requests_per_minute=cfg.requests_per_minute,
     )
     tau2_llm.completion = cached  # tau2 calls `completion` from this module for every LLM call
+    register_prompt_variants()
+    if cfg.faults is not None:
+        install_fault_hook(Environment, ToolMessage)
 
     tasks = _select_tasks(get_tasks(cfg.domain, task_split_name="base"), cfg)
     done = _done_runs(raw_path)
-    tau2_cfg = TextRunConfig(
-        domain=cfg.domain,
-        llm_agent=cfg.agent_model,
-        llm_args_agent=cfg.agent_llm_args,
-        llm_user=cfg.user_model,
-        llm_args_user=cfg.user_llm_args,
-        max_steps=cfg.max_steps,
-        seed=cfg.seed,
+    pending = [(t, tr) for t in tasks for tr in range(cfg.num_trials) if (t.id, tr) not in done]
+    logger.info(
+        "%d tasks x %d trials; %d runs already done; %d to run with concurrency %d",
+        len(tasks),
+        cfg.num_trials,
+        len(done),
+        len(pending),
+        cfg.max_concurrency,
     )
-    logger.info("%d tasks x %d trials; %d runs already done", len(tasks), cfg.num_trials, len(done))
 
+    def run_one(task: Any, trial: int) -> dict[str, Any]:
+        prompt, user, faulty = choose_conditions(cfg, task.id, trial)
+        seed = cfg.seed + trial
+        injector = (
+            FaultInjector(cfg.faults, f"{cfg.seed}:{task.id}:{trial}:faults")
+            if (faulty and cfg.faults is not None)
+            else None
+        )
+        tau2_cfg = TextRunConfig(
+            domain=cfg.domain,
+            agent=AGENT_NAMES[prompt],
+            llm_agent=cfg.agent_model,
+            llm_args_agent=cfg.agent_llm_args,
+            llm_user=cfg.user_model,
+            llm_args_user=cfg.user_llm_args,
+            max_steps=cfg.max_steps,
+            seed=cfg.seed,
+        )
+        ns_token = cache_namespace.set(f"{cfg.run_name}/{task.id}/{trial}")
+        fault_token = active_injector.set(injector)
+        try:
+            sim = run_single_task(
+                tau2_cfg,
+                with_user_variant(task, user),
+                seed=seed,
+                evaluation_type=EvaluationType.ENV,
+            )
+        finally:
+            active_injector.reset(fault_token)
+            cache_namespace.reset(ns_token)
+        info = RunInfo(
+            domain=cfg.domain,
+            agent_model=cfg.agent_model,
+            user_model=cfg.user_model,
+            prompt_variant=prompt,
+            user_variant=user,
+            fault=injector.summary() if injector else None,
+            trial=trial,
+            seed=seed,
+        )
+        return {
+            "run_info": info.model_dump(),
+            "simulation": sim.model_dump(mode="json"),
+            "faults": injector.events if injector else [],
+        }
+
+    stop = threading.Event()
+    lock = threading.Lock()
     failures = 0
-    for task in tasks:
-        for trial in range(cfg.num_trials):
-            if (task.id, trial) in done:
-                continue
-            seed = cfg.seed + trial
-            token = cache_namespace.set(f"{cfg.run_name}/{task.id}/{trial}")
-            try:
-                sim = run_single_task(tau2_cfg, task, seed=seed, evaluation_type=EvaluationType.ENV)
-            except (BudgetExceeded, ContextOverflow) as e:
-                logger.error("Stopping: %s", e)
-                return _finish(run_dir, raw_path, cached)
-            except Exception:
+
+    def work(item: tuple[Any, int]) -> None:
+        nonlocal failures
+        task, trial = item
+        if stop.is_set():
+            return
+        try:
+            record = run_one(task, trial)
+        except (BudgetExceeded, ContextOverflow) as e:
+            logger.error("Stopping: %s", e)
+            stop.set()
+            return
+        except Exception:
+            logger.exception("Run failed: task %s trial %d", task.id, trial)
+            with lock:
                 failures += 1
-                logger.exception("Run failed: task %s trial %d", task.id, trial)
                 if failures >= MAX_CONSECUTIVE_FAILURES:
                     logger.error("Stopping after %d consecutive failures", failures)
-                    return _finish(run_dir, raw_path, cached)
-                continue
-            finally:
-                cache_namespace.reset(token)
+                    stop.set()
+            return
+        with lock:
             failures = 0
-            info = RunInfo(
-                domain=cfg.domain,
-                agent_model=cfg.agent_model,
-                user_model=cfg.user_model,
-                prompt_variant=cfg.prompt_variant,
-                user_variant=cfg.user_variant,
-                trial=trial,
-                seed=seed,
-            )
-            record = {"run_info": info.model_dump(), "simulation": sim.model_dump(mode="json")}
             with raw_path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    with ThreadPoolExecutor(max_workers=cfg.max_concurrency) as pool:
+        list(pool.map(work, pending))
     return _finish(run_dir, raw_path, cached)
+
+
+def choose_conditions(cfg: AgentRunConfig, task_id: str, trial: int) -> tuple[str, str, bool]:
+    """Seeded (prompt variant, user variant, inject faults?) for one (task, trial)."""
+    rng = random.Random(f"{cfg.seed}:{task_id}:{trial}:conditions")
+    prompt = rng.choices(list(cfg.prompt_variants), weights=list(cfg.prompt_variants.values()))[0]
+    user = rng.choices(list(cfg.user_variants), weights=list(cfg.user_variants.values()))[0]
+    faulty = cfg.faults is not None and rng.random() < cfg.faults.run_rate
+    return prompt, user, faulty
 
 
 def _point_tau2_at_data() -> None:

@@ -237,3 +237,27 @@ trace gold set, change the salt once, before freezing, and record it here. Never
 - The `user_stop_with_content` flag fired on 6/10 Llama runs: with weak agents most failures
   are genuine and users still say "thanks ###STOP###", so the flag has low precision there. It
   stays a review hint, mainly useful for strong-agent runs.
+
+### 2026-10-03 — Failure-diversity features: prompt/user variants, tool faults, parallel runs
+
+- **Per-run condition mixing.** Each (task, trial) draws its prompt variant (`tau2_default`,
+  `sloppy`, `no_policy`), user variant (`tau2_default`, `pushy`) and whether faults are
+  injected from config weights, seeded by (seed, task, trial). One config per model produces a
+  mixed dataset; every run's conditions are reproducible and stored in its RunInfo.
+- **Faults only on read tools.** tau2 scores a run by replaying the agent's *mutating* tool
+  calls in a fresh environment (through the same `get_response`) and strictly comparing each
+  result with the recorded one; reads are skipped. Faulting a write would either break that
+  replay or make the DB disagree with what the agent was told. Faulting reads (timeout, 503
+  error, empty body, prompt-injection text appended to a real result) never touches the DB, so
+  env scoring stays valid, while F5 (carrying on after a failed lookup) and F8 (following
+  injected instructions) become possible. Every injected fault is recorded per run
+  (`faults` in raw.jsonl: type, tool, call id) as ground truth for labelling.
+- **Pushy user stays solvable:** it pushes for rule-bending at least twice but accepts a polite
+  refusal, so the original evaluation criteria still define success.
+- **Parallel runs:** `max_concurrency` runs simulations in threads; the LLM cache now holds its
+  lock only for bookkeeping, never during the LLM call (tested: 4 parallel 0.3 s calls finish
+  in < 0.9 s). Budget can overshoot by at most the in-flight calls' cost. Ollama serves 3 slots
+  with an 8-bit KV cache so 3 x 32k contexts fit in the T4's 16 GB.
+- **New leakage surface for the serialiser:** `prompt_variant`, `meta.user_variant`,
+  `meta.fault` and arguably `agent_model` all correlate with failure (e.g. `no_policy` -> F3).
+  The judge's input must exclude them; only the conversation itself is evidence.

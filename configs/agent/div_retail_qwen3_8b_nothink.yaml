@@ -1,0 +1,34 @@
+# Diversity pilot (~50 runs): Qwen3 8B, thinking off, on the Colab T4, with the full mix of
+# prompt variants, user variants and injected tool faults. Measures the failure mix before the
+# large collection. Run from notebooks/collect_colab.ipynb.
+run_name: div_retail_qwen3_8b_nothink
+domain: retail
+num_tasks: 25
+task_sample_seed: 1  # different tasks from the benchmarks (seed 0)
+num_trials: 2
+seed: 300
+agent_model: ollama_chat/qwen3:8b
+agent_llm_args:
+  api_base: http://localhost:11434
+  num_ctx: 32768  # required: Ollama's default would silently truncate the policy
+  timeout: 120  # occasional Ollama stalls otherwise wait LiteLLM's 600 s default before retrying
+  reasoning_effort: none  # LiteLLM maps this to Ollama think=false (~4x faster runs)
+user_model: gemini/gemini-3.8-flash  # same user simulator as every other run
+user_llm_args: {}
+prompt_variants: {tau2_default: 0.5, sloppy: 0.25, no_policy: 0.25}
+user_variants: {tau2_default: 0.7, pushy: 0.3}
+faults:  # read tools only; see atl/agent/faults.py
+  run_rate: 0.5  # half the runs get faults
+  call_rate: 0.3  # in those runs, each read call has a 30% chance of a fault
+  max_per_run: 2
+  types: [timeout, error, empty, injection]
+max_concurrency: 3  # needs OLLAMA_NUM_PARALLEL=3 on the server (set in the notebook)
+max_steps: 100
+budget_usd: 5.0  # shared cost_log; only the Gemini user simulator costs money here
+requests_per_minute: 120
+prices:  # USD per 1M tokens
+  ollama_chat/qwen3:8b: {input: 0.0, output: 0.0}  # local GPU
+  gemini/gemini-3.8-flash: {input: 0.75, output: 3.75}
+output_dir: data/traces
+cache_dir: data/llm_cache
+cost_log: data/costs.jsonl

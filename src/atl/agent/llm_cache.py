@@ -10,6 +10,9 @@
   the budget cap holds across sessions, not just within one process.
 - Before each paid call, the cap is checked (`BudgetExceeded`) and calls are spaced to stay
   under a requests-per-minute limit (free tiers enforce this).
+- Thread-safe for parallel runs: the lock guards only bookkeeping (budget check, rate-limit
+  slot, counters, log writes), never the LLM call itself. With N calls in flight the cap can be
+  overshot by at most N calls' cost.
 """
 
 from __future__ import annotations
@@ -74,7 +77,7 @@ class CachedCompletion:
         self._min_interval = 60.0 / requests_per_minute if requests_per_minute else 0.0
         self._clock = clock
         self._sleep = sleep
-        self._last_call: float | None = None
+        self._next_slot = float("-inf")  # earliest start time for the next paid call
         self._lock = threading.Lock()
         self.spent_usd = self._read_spend()
         self.hits = 0
@@ -88,7 +91,8 @@ class CachedCompletion:
         model = str(kwargs.get("model"))
 
         if path.exists():
-            self.hits += 1
+            with self._lock:
+                self.hits += 1
             record = json.loads(path.read_text(encoding="utf-8"))
             self._log(key, model, namespace, cost=0.0, cached=True, usage=record.get("usage"))
             return self._from_dict(record["response"])
@@ -98,11 +102,15 @@ class CachedCompletion:
                 raise BudgetExceeded(
                     f"spent ${self.spent_usd:.4f} of ${self._budget:.2f}; raise budget_usd to go on"
                 )
-            self._wait_for_rate_limit()
-            response = self._completion(**kwargs)
-            self._last_call = self._clock()
+            now = self._clock()
+            start = max(now, self._next_slot)  # reserve the next rate-limit slot
+            self._next_slot = start + self._min_interval
+        if start > now:
+            self._sleep(start - now)
+        response = self._completion(**kwargs)  # outside the lock: parallel runs overlap here
+        cost = self._safe_cost(response)
+        with self._lock:
             self.misses += 1
-            cost = self._safe_cost(response)
             self.spent_usd += cost
 
         record = {"model": model, "namespace": namespace, "response": self._to_dict(response)}
@@ -110,13 +118,6 @@ class CachedCompletion:
         _atomic_write(path, json.dumps(record, ensure_ascii=False))
         self._log(key, model, namespace, cost=cost, cached=False, usage=record["usage"])
         return response
-
-    def _wait_for_rate_limit(self) -> None:
-        if self._last_call is None or not self._min_interval:
-            return
-        wait = self._min_interval - (self._clock() - self._last_call)
-        if wait > 0:
-            self._sleep(wait)
 
     def _safe_cost(self, response: Any) -> float:
         try:
@@ -144,7 +145,7 @@ class CachedCompletion:
             "usage": usage,
         }
         self._cost_log.parent.mkdir(parents=True, exist_ok=True)
-        with self._cost_log.open("a", encoding="utf-8") as f:
+        with self._lock, self._cost_log.open("a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
 
 

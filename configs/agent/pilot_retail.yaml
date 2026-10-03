@@ -10,8 +10,6 @@ agent_model: gemini/gemini-3.8-flash
 agent_llm_args: {}  # provider defaults; Google recommends default temperature for Gemini 3
 user_model: gemini/gemini-3.8-flash  # fixed for every run; Flash-Lite caused false failures
 user_llm_args: {}
-prompt_variant: tau2_default
-user_variant: tau2_default
 max_steps: 100
 # Cap on spend at the list prices below (real spend on a paid key; caching makes it lower).
 budget_usd: 5.0  # total across runs sharing cost_log; below the AI Studio cap (INR 500 ≈ $5.7)

@@ -135,3 +135,24 @@ def test_rate_limit_spaces_paid_calls(tmp_path: Path) -> None:
     cached(**req(temperature=0.2))  # 10 s interval, 4 s elapsed -> waits 6 s
     cached(**req(temperature=0.1))  # cache hit: no wait
     assert sleeps == [pytest.approx(6.0)]
+
+
+def test_paid_calls_run_in_parallel(tmp_path: Path) -> None:
+    import threading
+    import time
+
+    class SlowLLM(FakeLLM):
+        def __call__(self, **kwargs: Any) -> dict[str, Any]:
+            time.sleep(0.3)
+            return super().__call__(**kwargs)
+
+    cached = make(tmp_path, SlowLLM(cost=0.0))
+    threads = [threading.Thread(target=cached, kwargs=req(temperature=i / 10)) for i in range(4)]
+    start = time.perf_counter()
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert cached.misses == 4
+    assert time.perf_counter() - start < 0.9  # serialised would take >= 1.2 s
+    assert len((tmp_path / "costs.jsonl").read_text().splitlines()) == 4

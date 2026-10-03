@@ -14,8 +14,6 @@ agent_llm_args:
   timeout: 120  # occasional Ollama stalls otherwise wait LiteLLM's 600 s default before retrying
 user_model: gemini/gemini-3.8-flash  # same user simulator as every other run
 user_llm_args: {}
-prompt_variant: tau2_default
-user_variant: tau2_default
 max_steps: 100
 budget_usd: 5.0  # shared cost_log; only the Gemini user simulator costs money here
 requests_per_minute: 60

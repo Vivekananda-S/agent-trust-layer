@@ -15,6 +15,7 @@ from atl.agent.run_tau2 import (
     _guard_context,
     _price,
     _select_tasks,
+    choose_conditions,
     run,
     run_stats,
 )
@@ -134,3 +135,26 @@ def test_run_stats(tmp_path: Path) -> None:
         "flagged_for_review": 1,
     }
     assert run_stats(tmp_path / "missing") == {"runs": 0}
+
+
+@needs_tau2
+def test_smoke_parallel_runs_with_mixed_variants(tmp_path: Path) -> None:
+    cfg = AgentRunConfig.from_yaml(CONFIGS[0]).as_smoke(tmp_path)
+    cfg = cfg.model_copy(
+        update={
+            "num_trials": 4,
+            "max_concurrency": 3,
+            "prompt_variants": {"tau2_default": 1.0, "sloppy": 1.0, "no_policy": 1.0},
+            "user_variants": {"tau2_default": 1.0, "pushy": 1.0},
+        }
+    )
+    run(cfg, smoke=True)
+    records = [
+        json.loads(x) for x in (tmp_path / cfg.run_name / "raw.jsonl").read_text().splitlines()
+    ]
+    assert sorted(r["run_info"]["trial"] for r in records) == [0, 1, 2, 3]
+    for r in records:
+        expected = choose_conditions(cfg, "create_task_1", r["run_info"]["trial"])
+        assert (r["run_info"]["prompt_variant"], r["run_info"]["user_variant"]) == expected[:2]
+        assert r["faults"] == [] and r["run_info"]["fault"] is None
+    assert len({r["run_info"]["prompt_variant"] for r in records}) > 1  # the mix is really used

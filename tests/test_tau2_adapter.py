@@ -10,6 +10,7 @@ import pytest
 from atl.traces.adapters.tau2 import (
     RunInfo,
     convert_raw_file,
+    review_flags,
     sim_to_trace,
     unusable_reason,
 )
@@ -158,3 +159,18 @@ def test_convert_raw_file_counts_exclusions(sim: dict[str, Any], tmp_path: Path)
     traces, excluded = convert_raw_file(path)
     assert [t.trace_id for t in traces] == ["tau2-sim-0001"]
     assert excluded == {"termination:infrastructure_error": 1}
+
+
+def test_review_flag_on_failed_run_with_stop_and_text(sim: dict[str, Any]) -> None:
+    # Fixture: reward 0.0 and last user message "Thanks! ###STOP###".
+    assert review_flags(sim) == ["user_stop_with_content"]
+
+
+def test_no_review_flag_when_run_succeeded(sim: dict[str, Any]) -> None:
+    sim["reward_info"] = {"reward": 1.0}
+    assert review_flags(sim) == []
+
+
+def test_no_review_flag_for_bare_stop(sim: dict[str, Any]) -> None:
+    sim["messages"][-1]["content"] = "###STOP###"
+    assert review_flags(sim) == []

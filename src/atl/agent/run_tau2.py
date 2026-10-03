@@ -28,7 +28,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 from atl.agent.llm_cache import BudgetExceeded, CachedCompletion, cache_namespace
-from atl.traces.adapters.tau2 import RunInfo, convert_raw_file
+from atl.traces.adapters.tau2 import RunInfo, convert_raw_file, review_flags
 from atl.traces.schema import save_traces
 
 logger = logging.getLogger(__name__)
@@ -217,20 +217,36 @@ def _finish(run_dir: Path, raw_path: Path, cached: CachedCompletion) -> Path:
     traces_path = run_dir / "traces.jsonl"
     traces, excluded = convert_raw_file(raw_path) if raw_path.exists() else ([], {})
     save_traces(traces, traces_path)
+    n_flagged = _write_review_flags(raw_path, run_dir / "review_flags.jsonl")
     known = [t.env_outcome.task_success for t in traces if t.env_outcome]
     known = [s for s in known if s is not None]
     rate = sum(known) / len(known) if known else float("nan")
     logger.info(
-        "Run summary: %d traces (excluded %s), env success rate %.2f, "
+        "Run summary: %d traces (excluded %s, flagged for review %d), env success rate %.2f, "
         "LLM calls %d paid / %d cached, total logged spend $%.4f",
         len(traces),
         dict(excluded),
+        n_flagged,
         rate,
         cached.misses,
         cached.hits,
         cached.spent_usd,
     )
     return traces_path
+
+
+def _write_review_flags(raw_path: Path, out: Path) -> int:
+    """Write {"trace_id", "flags"} for runs needing human review; return how many."""
+    rows = []
+    if raw_path.exists():
+        with raw_path.open(encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    sim = json.loads(line)["simulation"]
+                    if flags := review_flags(sim):
+                        rows.append({"trace_id": f"tau2-{sim['id']}", "flags": flags})
+    out.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    return len(rows)
 
 
 def _price(response: Any, prices: dict[str, Price], fallback: Any) -> float:

@@ -79,6 +79,26 @@ def unusable_reason(sim: dict[str, Any]) -> str | None:
     return None
 
 
+def review_flags(sim: dict[str, Any]) -> list[str]:
+    """Reasons a usable run needs a human look before its env label is trusted.
+
+    `user_stop_with_content`: the run failed and the user simulator sent text and a control
+    token in one turn (e.g. "Yes, please proceed. ###STOP###"), which can end the run before
+    the agent acts; the failure may then measure the simulator, not the agent. Successful runs
+    are not flagged: "Thanks! ###STOP###" after a solved task is a normal goodbye.
+    """
+    flags: list[str] = []
+    if (sim.get("reward_info") or {}).get("reward") == 1.0:
+        return flags
+    for msg in sim.get("messages") or []:
+        content = msg.get("content") or ""
+        text = _strip_control_tokens(content)
+        if msg.get("role") == "user" and text and text != content.strip():
+            flags.append("user_stop_with_content")
+            break
+    return flags
+
+
 def sim_to_trace(sim: dict[str, Any], info: RunInfo) -> Trace:
     """Convert one tau2 SimulationRun (JSON dict) into a Trace."""
     steps = _convert_messages(sim["messages"])

@@ -1,6 +1,6 @@
-# Pilot: 10 sampled retail tasks, 1 trial, Gemini free tier. Measures tokens and cost per trace.
+# Pilot: 10 sampled retail tasks, 1 trial, Gemini paid tier. Measures success rate, failures, cost.
 # Offline check first:  atl-agent run --config configs/agent/pilot_retail.yaml --smoke
-run_name: pilot_retail_gemini38flash
+run_name: pilot_retail_a38flash_u38flash
 domain: retail
 num_tasks: 10
 task_sample_seed: 0
@@ -8,15 +8,14 @@ num_trials: 1
 seed: 300
 agent_model: gemini/gemini-3.8-flash
 agent_llm_args: {}  # provider defaults; Google recommends default temperature for Gemini 3
-user_model: gemini/gemini-3.5-flash-lite  # fixed user simulator for every run
+user_model: gemini/gemini-3.8-flash  # fixed for every run; Flash-Lite caused false failures
 user_llm_args: {}
 prompt_variant: tau2_default
 user_variant: tau2_default
 max_steps: 100
-# Cap on *nominal* spend (paid-tier list prices below). On the free tier the real cost is $0,
-# but the cap still bounds usage, and the log gives the paid-tier projection.
-budget_usd: 5.0
-requests_per_minute: 8  # free-tier Flash allows ~10
+# Cap on spend at the list prices below (real spend on a paid key; caching makes it lower).
+budget_usd: 10.0  # total across all runs sharing cost_log
+requests_per_minute: 60  # paid tier allows far more; keeps bursts polite
 prices:  # USD per 1M tokens, ai.google.dev/gemini-api/docs/pricing, checked 2026-10-03
   gemini/gemini-3.8-flash: {input: 0.75, output: 3.75}
   gemini/gemini-3.5-flash-lite: {input: 0.30, output: 2.50}

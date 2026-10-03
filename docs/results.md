@@ -397,3 +397,5 @@ has to be read from the project's AI Studio page.
      (ending early, contradicting its instructions, inventing facts about the user).
 - Cost: ~40 Gemini-simulator runs x $0.0125 (measured) ≈ $0.50 (≈ ₹43); local arm $0.
   Colab time ≈ 1.5 h at ~50–70 runs/hour.
+- **Pass rule confirmed by the project owner on 2026-10-03, before any A/B run** (rules 1–3 above,
+  unchanged). The test passes only if all three hold.

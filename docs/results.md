@@ -470,3 +470,17 @@ What fits for free:
   `reasoning_effort`). At ~970 input tokens per simulator call (measured), 16K TPM allows ~16
   calls/min ≈ 2 runs/min, above the T4 agent's ~1 run/min, so it should not be the bottleneck.
   Untested as a customer: it needs one A/B arm against the existing Gemini arms ($0).
+
+### A/B test, arm C: Gemma 4 31B simulator (pass rule confirmed before running)
+
+- Configs `configs/agent/ab_{retail,airline}_gemma_sim.yaml`: identical to the earlier arms
+  (same 20 tasks, seeds, agent, defaults, no faults) except the customer = `gemini/gemma-4-31b-it`.
+  Compared against the existing Gemini arms (reference and noise floor), so only 40 new runs.
+  Cost $0 (local agent, free-tier Gemma).
+- **Pass rule, confirmed by the project owner on 2026-10-03 before any Gemma run.** All four must
+  hold:
+  1. outcome agreement Gemma vs Gemini (trial-paired) >= Gemini-vs-Gemini agreement minus 0.10;
+  2. `user_stop_with_content` flag rate in the Gemma arm <= 1.5x the Gemini arm;
+  3. hand review of every Gemma/Gemini disagreement finds <= 2 caused by the simulator;
+  4. **new:** the customer repeats one message >= 5 times in <= 10% of Gemma runs (the Gemini arms:
+     0/38). Added because checks 1–2 missed the local simulator's loops in the first test.

@@ -1,0 +1,28 @@
+# Customer-simulator A/B test (Plan revision 1, decision 6). Only the simulator differs between
+# the arms; agent, tasks, seeds, prompt (default), user variant (default) and faults (none) are
+# fixed. 2 trials per task in each arm give the same-simulator noise floor.
+run_name: ab_airline_gemma_sim
+domain: airline
+num_tasks: 10
+task_sample_seed: 2  # same 10 tasks in both arms
+num_trials: 2
+seed: 300
+agent_model: ollama_chat/qwen3:8b
+agent_llm_args:
+  api_base: http://localhost:11434
+  num_ctx: 32768  # required: Ollama's default would silently truncate the policy
+  timeout: 120
+  reasoning_effort: none
+user_model: gemini/gemma-4-31b-it  # arm C: Gemma 4 31B via the Gemini API (free tier only)
+user_llm_args: {}  # Gemma always thinks briefly; the API rejects reasoning_effort
+max_concurrency: 3  # needs OLLAMA_NUM_PARALLEL=3 (set in the notebook)
+max_steps: 100
+budget_usd: 5.0  # shared cost_log; this arm is free (local agent + free-tier Gemma)
+requests_per_minute: 120  # all calls; Gemma free tier allows 30 RPM / 16K TPM
+prices:  # USD per 1M tokens
+  ollama_chat/qwen3:8b: {input: 0.0, output: 0.0}  # local GPU
+  gemini/gemini-3.8-flash: {input: 0.75, output: 3.75}
+  gemini/gemma-4-31b-it: {input: 0.0, output: 0.0}  # free tier only
+output_dir: data/traces
+cache_dir: data/llm_cache
+cost_log: data/costs.jsonl

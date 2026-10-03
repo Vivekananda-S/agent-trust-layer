@@ -6,8 +6,10 @@ agent failed and which failure classes (F1–F8) occurred. See [docs/plan.md](do
 ## Setup
 
 ```bash
-python3.11 -m venv .venv
+uv venv --python 3.12 .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+uv pip install -e ".[dev,agent]"   # `agent` adds tau2-bench; omit it for judge-only work
 pytest
 ```
+
+Copy `.env.example` to `.env` and fill in the API keys you have.

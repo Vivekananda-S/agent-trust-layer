@@ -30,7 +30,7 @@ The gold test set is the hand-verified data in `data/gold/` (and any split named
 
 ## Coding conventions
 
-- **Python 3.11**, `src/` layout, package `atl`. Dependencies in `pyproject.toml`; pin versions used on Colab.
+- **Python 3.12** (matches Colab and τ³-bench), `src/` layout, package `atl`. Dependencies in `pyproject.toml`; pin versions used on Colab.
 - **Style:** `ruff check` and `ruff format` (line length 100). Type hints on all public functions. Short functions and docstrings on modules and public functions.
 - **Data models:** pydantic v2 for traces, labels and API payloads. The trace schema in `src/atl/traces/schema.py` is the contract; change it only with a version bump.
 - **Versioning:** the trace serialiser (`judge/serialise.py`) carries a `SERIALISER_VERSION`. Any change to its output bumps the version. Model artefacts record the serialiser version and the data version they were trained on.

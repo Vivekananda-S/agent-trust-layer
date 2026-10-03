@@ -7,8 +7,8 @@ name = "atl"
 version = "0.1.0"
 description = "Agent Trust Layer: a calibrated small judge model for AI agent execution traces."
 readme = "README.md"
-# Develop on 3.11; no upper cap because Colab's runtime Python moves ahead of us.
-requires-python = ">=3.11"
+# 3.12 matches Colab and tau2-bench; no upper cap because Colab's runtime Python moves ahead.
+requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Vivekananda Shonti" }]
 # Core deps stay minimal so the schema, splits and eval code install fast locally and in CI.
@@ -20,8 +20,18 @@ dependencies = [
 
 [project.scripts]
 atl-splits = "atl.data.splits:app"
+atl-traces = "atl.traces.adapters.tau2:app"
+atl-agent = "atl.agent.run_tau2:app"
 
 [project.optional-dependencies]
+# System under test. Pinned to an exact commit so tasks, policies and scoring never drift.
+# Only src/atl/agent/ may import tau2 (enforced by tests/test_tau2_import_guard.py).
+agent = [
+    "tau2 @ git+https://github.com/sierra-research/tau2-bench@5bfa7e37b36656b37dc6d022156be6563c1007f3",
+    "python-dotenv>=1.0",
+    # tau2's core import pulls in its voice module, which needs this (listed only in tau2[voice]).
+    "websockets>=13.0",
+]
 # GPU training stack. Lower bounds for now; pin exact versions after the first Colab T4 run.
 train = [
     "torch>=2.3",
@@ -40,12 +50,15 @@ dev = [
     "ruff>=0.6",
 ]
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/atl"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 src = ["src", "tests"]
 
 [tool.ruff.lint]

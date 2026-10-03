@@ -378,3 +378,22 @@ has to be read from the project's AI Studio page.
   `gemini-3.8-flash` prices double on 2027-01-01. Run and cache the teacher and the reference
   judge before those dates where possible.
 - The A/B test itself costs ~₹25 (Gemini arm, 20 runs).
+
+### Plan revision 1 — A/B test design (configs ready; thresholds awaiting confirmation)
+
+- Configs: `configs/agent/ab_{retail,airline}_{gemini,local}_sim.yaml`. 10 retail + 10 airline
+  tasks (`task_sample_seed: 2`, identical in both arms), agent Qwen3 8B no-think on the T4,
+  default prompt and user, no faults; only the customer simulator differs (gemini-3.8-flash vs
+  local qwen3:8b, thinking off, same loaded model). 2 trials per task per arm = 80 runs.
+- **Why 2 trials per arm:** LLM runs are noisy even with identical settings (thinking on/off
+  disagreed on 7 of 10 tasks at near-equal success rates). Gemini-vs-Gemini agreement gives the
+  noise floor; a fixed "16/20 agree" threshold could fail no matter how good the local simulator is.
+- **Proposed pass rule (to confirm before running):**
+  1. agreement on env outcome, local vs Gemini (trial-paired, 40 comparisons) >=
+     Gemini-vs-Gemini agreement (20 comparisons) minus 0.10;
+  2. `user_stop_with_content` flag rate in the local arm <= 1.5x the Gemini arm (or <= +10
+     points if the Gemini rate is near zero);
+  3. hand review of every local/Gemini disagreement finds <= 2 caused by the simulator
+     (ending early, contradicting its instructions, inventing facts about the user).
+- Cost: ~40 Gemini-simulator runs x $0.0125 (measured) ≈ $0.50 (≈ ₹43); local arm $0.
+  Colab time ≈ 1.5 h at ~50–70 runs/hour.

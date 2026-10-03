@@ -1,0 +1,31 @@
+# Customer-simulator A/B test (Plan revision 1, decision 6). Only the simulator differs between
+# the arms; agent, tasks, seeds, prompt (default), user variant (default) and faults (none) are
+# fixed. 2 trials per task in each arm give the same-simulator noise floor.
+run_name: ab_retail_local_sim
+domain: retail
+num_tasks: 10
+task_sample_seed: 2  # same 10 tasks in both arms
+num_trials: 2
+seed: 300
+agent_model: ollama_chat/qwen3:8b
+agent_llm_args:
+  api_base: http://localhost:11434
+  num_ctx: 32768  # required: Ollama's default would silently truncate the policy
+  timeout: 120
+  reasoning_effort: none
+user_model: ollama_chat/qwen3:8b  # arm B: local simulator (same loaded model as the agent)
+user_llm_args:
+  api_base: http://localhost:11434
+  num_ctx: 32768
+  timeout: 120
+  reasoning_effort: none  # thinking off, as it would run in the real collection
+max_concurrency: 3  # needs OLLAMA_NUM_PARALLEL=3 (set in the notebook)
+max_steps: 100
+budget_usd: 5.0  # shared cost_log; only the Gemini simulator arm costs money
+requests_per_minute: 120
+prices:  # USD per 1M tokens
+  ollama_chat/qwen3:8b: {input: 0.0, output: 0.0}  # local GPU
+  gemini/gemini-3.8-flash: {input: 0.75, output: 3.75}
+output_dir: data/traces
+cache_dir: data/llm_cache
+cost_log: data/costs.jsonl

@@ -98,7 +98,7 @@ def test_context_guard() -> None:
     calls: list[dict[str, object]] = []
     guarded = _guard_context(lambda **kw: calls.append(kw) or "ok")
     small = [{"role": "user", "content": "x" * 3_000}]
-    huge = [{"role": "user", "content": "x" * 90_000}]  # >= 30k tokens at 3 chars/token
+    huge = [{"role": "user", "content": "x" * 110_000}]  # ~31.4k tokens at 3.5 chars/token
     assert guarded(model="ollama_chat/m", messages=small, num_ctx=32768) == "ok"
     with pytest.raises(ContextOverflow, match="num_ctx=32768"):
         guarded(model="ollama_chat/m", messages=huge, num_ctx=32768)
@@ -187,3 +187,31 @@ def test_failed_run_is_logged_not_silently_lost(
     losses = [json.loads(x) for x in (run_dir / "failed_runs.jsonl").read_text().splitlines()]
     assert [(x["task_id"], x["trial"]) for x in losses] == [("create_task_1", 0)]
     assert "must have either content or tool_calls" in losses[0]["error"]
+
+
+@needs_tau2
+def test_context_overflow_ends_only_that_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import atl.agent.run_tau2 as runner
+    from atl.agent.llm_cache import cache_namespace
+
+    real_fake = runner._fake_completion
+
+    def overflow_on_trial_0(**kwargs: object) -> object:
+        if cache_namespace.get().endswith("/0"):
+            raise ContextOverflow("too long")
+        return real_fake(**kwargs)
+
+    monkeypatch.setattr(runner, "_fake_completion", overflow_on_trial_0)
+    cfg = (
+        AgentRunConfig.from_yaml(CONFIGS[0]).as_smoke(tmp_path).model_copy(update={"num_trials": 2})
+    )
+    run(cfg, smoke=True)
+    run_dir = tmp_path / cfg.run_name
+    kept = [
+        json.loads(x)["run_info"]["trial"] for x in (run_dir / "raw.jsonl").read_text().splitlines()
+    ]
+    lost = [json.loads(x) for x in (run_dir / "failed_runs.jsonl").read_text().splitlines()]
+    assert kept == [1]
+    assert [(x["trial"], x["error"]) for x in lost] == [(0, "ContextOverflow: too long")]

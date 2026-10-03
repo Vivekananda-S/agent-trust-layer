@@ -287,3 +287,19 @@ trace gold set, change the salt once, before freezing, and record it here. Never
   Substituting placeholder text would put invented content in front of the judge, so instead
   every failed run is now logged to `failed_runs.jsonl` (task, trial, conditions, error) and
   retried on the next resume. Known bias: "agent goes silent" is under-represented.
+
+### 2026-10-03 — Diversity pilot, airline; context guard calibrated
+
+- 24 of 50 runs before the run stopped; env success 21% (5/24); 72.5 runs/hour wall clock;
+  $0.010/run. 16 faults in 10 runs. Airline adds new F2 shapes: placeholder argument
+  `Flight flight_number not found`, a booking call missing 3 required arguments, and payment
+  amounts that "do not add up" (e.g. paid 450 for a 298 total).
+- **Why it stopped:** one conversation reached 92,628 chars; the context guard estimated
+  ~35k tokens (3 chars/token + 4k reply reserve) > `num_ctx` 32768 and raised, and the runner
+  treated that as fatal for the whole run. Two fixes:
+  - **Calibrated the estimate on real data:** reconstructed the prompt for 1,320 Qwen3 calls
+    (system prompt + tool schemas + history) against Ollama's reported prompt tokens —
+    chars/token median 4.8, 5th percentile 4.1, minimum 3.73 (retail and airline alike).
+    Bound set to 3.5 (still below the minimum). The 92k-char prompt now estimates to ~30.6k.
+  - **Overflow ends only that conversation** (logged to failed_runs.jsonl, other runs go on).
+    Known bias: the longest conversations (often loops, F6) can still be lost; they are counted.

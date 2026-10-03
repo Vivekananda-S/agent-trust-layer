@@ -59,12 +59,16 @@ SMOKE_TASK_IDS = ["create_task_1"]
 MAX_CONSECUTIVE_FAILURES = 3  # e.g. a free-tier daily quota is exhausted: stop, resume tomorrow
 # Local (Ollama) context guard. Ollama silently truncates prompts longer than `num_ctx`, which
 # would cut the policy out of the prompt and turn every run into a fake failure.
-CHARS_PER_TOKEN_LOWER_BOUND = 3.0  # conservative: real text and JSON average ~4 chars per token
+# Measured on 1,320 Qwen3 calls (retail + airline): chars/token median 4.8, minimum 3.73.
+CHARS_PER_TOKEN_LOWER_BOUND = 3.5  # below the observed minimum, so the estimate over-counts
 OUTPUT_TOKEN_RESERVE = 4096  # room for the reply, including thinking tokens
 
 
 class ContextOverflow(RuntimeError):
-    """Raised before a local-model call whose prompt may not fit in `num_ctx`."""
+    """Raised before a local-model call whose prompt may not fit in `num_ctx`.
+
+    It ends that conversation only (logged to failed_runs.jsonl); other runs continue.
+    """
 
 
 class Price(BaseModel):
@@ -251,7 +255,7 @@ def run(cfg: AgentRunConfig, *, smoke: bool = False) -> Path:
             return
         try:
             record = run_one(task, trial)
-        except (BudgetExceeded, ContextOverflow) as e:
+        except BudgetExceeded as e:
             logger.error("Stopping: %s", e)
             stop.set()
             return

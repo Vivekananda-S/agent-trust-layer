@@ -74,3 +74,20 @@ of a 15% share is about 1.8 points, so a 3-point shortfall is ordinary sampling 
 bug. Implication for the real data (tau-bench retail has only a few hundred tasks): check the
 realised counts when the manifest is first built; if the test pool is too small for a 400–600
 trace gold set, change the salt once, before freezing, and record it here. Never after.
+
+### 2026-10-03 — First live pilot (retail, gemini-3.8-flash agent, 3.5-flash-lite user)
+
+- **Free tier is not a data source.** gemini-3.8-flash allows 20 requests/day/project on the
+  free tier (`GenerateRequestsPerDayPerProjectPerModel-FreeTier`); a trace needs ~10 agent
+  calls, so ~2 traces/day. The run stopped cleanly after 3 consecutive quota errors, as designed.
+- **Measured cost:** one retail trace used ~54k agent input + ~2k output tokens (my estimate
+  was ~170k), nominal $0.045 agent + $0.001 user simulator. Projection per 1,000 traces at list
+  prices: ~$48 on 3.8-flash, ~$21 on 3.5-flash-lite, ~$6 on 2.5-flash-lite, ~$1 on Llama 3.1 8B.
+  Upper bounds: Gemini's implicit prompt caching discount is not yet credited.
+- **Weak user simulator produces false failures.** Task 108: the agent asked for confirmation,
+  the Flash-Lite user simulator replied "Yes, please proceed with the return. ###STOP###" —
+  confirming and ending the conversation in one turn. The agent never acted, the DB check
+  failed, and the trace is labelled a failure although the agent did nothing wrong. This is
+  label noise in the exact signal the judge learns from; the user simulator must be strong.
+- Gemini 3 multi-turn tool calling works through tau2: LiteLLM carries the thought signature
+  inside the tool-call id, which tau2 preserves. The adapter strips it from traces.

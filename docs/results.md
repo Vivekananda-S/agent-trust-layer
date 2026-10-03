@@ -164,3 +164,21 @@ trace gold set, change the salt once, before freezing, and record it here. Never
   LiteLLM maps to Ollama `think=false`).
 - The user simulator is the only cost of a local run: ~$0.01/run on 3.8-flash, ~$23 for 2,400
   runs. Flash-Lite would be ~3x cheaper; it needs a quality check before switching.
+
+### 2026-10-03 — Where Qwen3's time went, and what it got wrong (raw.jsonl from Drive)
+
+- **Time:** 94% of the 53 minutes is agent generation (111 calls, 27 s/call); the Gemini user
+  simulator is negligible. **91% of the agent's output is hidden thinking** (~2.7k reasoning
+  chars per call vs ~260 visible). Prompt sizes are modest (median 5.0k, max 9.2k tokens).
+  Thinking is the bottleneck; turning it off should give ~4–5x (estimate, to be measured).
+- **Failures (provisional reads, not labels):**
+  - 97: modified an order with a variant id that does not exist ("Variant not found") — F2.
+  - 53: demanded the order number and gave up after 2 tool calls, although name + zip lookup
+    could find the order — F7.
+  - 5: invented a payment method (`credit_card_XXXX`), exchanged instead of returning, then
+    transferred to a human three times — F2 + F1, F6 candidate.
+  - 62: cancelled an order the task does not call for, then transferred — F3 candidate.
+  - 108: the under-specified task Gemini also fails — not an agent failure.
+- One weak open model, one 10-task pilot: 4 genuine failures across F1, F2, F3, F7 (and F6
+  candidate). Gemini produced 1 ambiguous failure in 20. Weak local agents are where the
+  failure signal comes from; the strong API agent mainly supplies clean successes.

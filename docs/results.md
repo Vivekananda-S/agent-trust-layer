@@ -414,3 +414,40 @@ has to be read from the project's AI Studio page.
   Gemini arms, as pre-registered.
 - Cell bug (mine): the progress stats line in the A/B cell used `'{.*'`, which stops IPython from
   expanding `{name}`, so it printed `{"runs": 0}`. Runs themselves were unaffected.
+
+### A/B test — verdict: FAIL (local Qwen3 8B simulator, thinking off)
+
+Data: 75 runs (local 37, Gemini 38; 1–2 runs per arm never recorded, mostly after connection
+errors that succeeded on retry). Gemini simulator arms cost $0.59 ($0.018/run retail,
+$0.013/run airline).
+
+| Arm | Env success | Customer repeats one message >= 5x | Customer ends the conversation itself |
+| --- | --- | --- | --- |
+| retail, local simulator | 2/18 | 12/18 | 8/18 |
+| retail, Gemini simulator | 6/19 | 0/19 | 18/19 |
+| airline, local simulator | 6/19 | 5/19 | 14/19 |
+| airline, Gemini simulator | 6/19 | 0/19 | 19/19 |
+
+Pre-registered rule (all three must hold):
+1. Agreement on env outcome, local vs Gemini 27/35 = 0.77 >= Gemini-vs-Gemini 12/18 = 0.67 minus
+   0.10 -> **pass**.
+2. `user_stop_with_content` flag rate local 0/37 vs Gemini 16/38 -> **pass**.
+3. Hand review of the 8 disagreements: **6–7 simulator-caused** (limit 2) -> **FAIL**. The local
+   customer repeated one message 17, 46, 40 and 34 times (retail 7, retail 10, airline 5,
+   airline 10), muddled its confirmation instruction (retail 21, probable), and in airline 38
+   demanded a human transfer in its first message on both trials — an env "success" only because
+   nothing happened. Retail 103 was unclear (run ended on agent tool errors) and not counted.
+
+**Lessons (interview material):**
+- Checks 1 and 2 passed but measured the wrong thing. Binary outcome agreement is dominated by
+  runs that fail in both arms (most runs), and the same-simulator noise floor is itself low
+  (12/18), so the bar was easy. The flag detects a customer who stops *too early*; it cannot
+  fire for a customer that rarely stops at all. The qualitative check caught what the metrics
+  missed. Next time pre-register a direct behavioural metric too (e.g. loop rate).
+- The loops are mostly in runs where *both* arms failed, which the disagreement review never
+  sees: 17/37 local runs loop vs 0/38 Gemini runs. Data from this simulator would mislabel
+  customer-caused loops as agent F6.
+- The Gemini arms are a reusable reference: another simulator candidate on the same tasks and
+  seeds needs only its own arm (e.g. local with thinking on costs $0).
+
+**Consequence (Plan revision 1, decision 5):** trace target ~1,500 with a Gemini simulator.

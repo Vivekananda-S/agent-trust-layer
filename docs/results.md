@@ -572,3 +572,20 @@ The T4 idles while waiting but still consumes Colab GPU hours. At this rate 1,50
   `rpm: 25, input_tpm: 13000` (~80% of 30 / 16K). Expected ~50–65 runs/hour (13K / 1,087 tokens =
   12 calls/min ≈ 72 runs/hour, less in-flight over-estimates); to be confirmed on Kaggle.
   Known gap: LiteLLM's internal retries (HTTP 500s) bypass the limiter.
+
+### 2026-10-04 — Second collection session: the limiter alone did not help (root cause found)
+
+- Session 2 (limiter active): 14 new runs (31 total), customer loops 0, but ~71 more 429s and the
+  run **stopped itself after 34 of 60 minutes** on 3 consecutive failed runs (RateLimitError).
+  Real throughput ~25 runs/hour, unchanged.
+- **Successful** Gemma calls peaked at 10,546 input tokens/min (avg ~5 calls/min) — under both
+  our 13K pacing and Google's 16K cap — yet Google still returned input-token-quota 429s.
+- **Root cause:** Gemma's HTTP 500s (28 this session) are retried by LiteLLM *inside* one
+  `completion()` call, invisible to the limiter, and every retry resends the full prompt and
+  counts against the token quota. The limiter paced what it could see; hidden retries pushed real
+  usage over the cap. Google's 429 bodies suggest `retryDelay` of 3–21 s.
+- **Second problem:** "stop after 3 consecutive failed runs" was designed for an exhausted daily
+  quota; with transient free-tier errors it ends sessions early.
+- Proposed: retries in our wrapper through the limiter (LiteLLM retries off for Gemma; honour
+  `retryDelay` on 429, exponential backoff on 5xx), and transient failures no longer count toward
+  the stop rule.

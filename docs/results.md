@@ -670,3 +670,18 @@ The T4 idles while waiting but still consumes Colab GPU hours. At this rate 1,50
   no corrupt lines in either raw file. The killed runner never wrote its ledger entry, so it was
   reconstructed conservatively (12:48–13:26 + 3 min scale-down ≈ $2.70). Lesson: the runner should
   record GPU time incrementally (e.g. a heartbeat), not only at the end.
+
+### 2026-10-04 — Main collection finished on Modal (budget stop)
+
+- Resumed retail session: 13:39–17:12 UTC, ~270 runs/hour within the session, stopped by the GPU
+  ledger (in-flight runs finished; ledger est $27.18 incl. overhead allowances; Modal's own figure
+  to be read from the dashboard). The app was stopped by the session script; no containers left.
+- **Self-hosted collection result:** retail **1,126** traces (env success 34.7%, customer loops 0,
+  terminations: 1,067 user_stop / 51 too_many_errors / 8 max_steps) and airline **494** (env success
+  21.5%, customer loops 1, 472 / 9 / 13). **1,620 traces** from the main collection; **1,885** traces
+  in total across all runs (pilots, benchmarks, A/B arms, Kaggle, diversity).
+- Note: `runs_per_hour_wall_clock` for retail reads 170 because its first-start-to-last-end window
+  spans the laptop outage; within each session it was ~260–290.
+- The phase 1 trace target (Plan revision 1: ~1,500 with a validated simulator) is met.
+  Still open for the phase 1 gate: held-out-model traces (Llama 3.1 8B on test-pool tasks; only
+  10 benchmark traces so far) and freezing the split manifest.

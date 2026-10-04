@@ -639,3 +639,20 @@ The T4 idles while waiting but still consumes Colab GPU hours. At this rate 1,50
 - **Operational rule:** the endpoint is unauthenticated at Modal's edge (our proxy checks the key,
   but even a rejected request wakes the GPU), so the app is stopped between sessions
   (`modal app stop atl-serving --yes`) and redeployed only to collect.
+
+### 2026-10-04 — Modal pilot: 262 runs/hour inside the budget
+
+- After three start-up fixes (CUDA devel image for vLLM's FA4 JIT; compile cache on an empty mount
+  path, with cache env set only for vLLM processes; Gemma at 16k context / 58% memory so its KV
+  cache fits) and one proxy bug (string annotations hid FastAPI's `Request` type -> 422; now
+  covered by a FastAPI TestClient test), the H100 served both models: warm in 275 s (450 s before
+  the compile cache), Qwen3 8B answered in 2.4 s, Gemma 4 31B in 3.8 s, a wrong key got 401.
+- **Pilot (first 20 min of the retail collection): 100 traces in 22.9 min = 262 runs/hour, 0 failed
+  runs, customer loops 0/100**, env success 31%, 16 parallel conversations. ~10x the free-tier
+  Gemma rate (~25/hour).
+- GPU ledger (estimates, conservative): failed nvcc start $1.71, L40S checks $0.35, warm-up/proxy
+  debug $0.92, pilot $2.49 -> **$5.48 of the $27 cap**. Remaining ~$21.5 ≈ one 5.2 h session ≈
+  ~1,360 more runs at the measured rate.
+- tau2 logs an ERROR for every call because LiteLLM has no price for self-hosted model names
+  (`This model isn't mapped yet`); harmless — our price table logs them at $0 and GPU cost lives in
+  the ledger.

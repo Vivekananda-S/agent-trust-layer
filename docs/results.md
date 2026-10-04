@@ -663,3 +663,10 @@ The T4 idles while waiting but still consumes Colab GPU hours. At this rate 1,50
 - **Main session launched (detached, survives tool timeouts):** deploy -> warm-up -> airline (all
   500 runs) -> retail (until the ledger's time runs out, ~5.7 h total ≈ ~1,500 runs at 262/hour)
   -> the app is always stopped on exit (shell `trap`). Traces land directly in local `data/traces/`.
+- **Interrupted (2026-10-04 13:26 UTC): the laptop shut down mid-retail.** Airline finished first:
+  494/500 traces (6 lost to over-long conversations), env success 21%, GPU est $7.69. Retail added
+  70 runs (170 total) before the last completed run at 13:06; connection retries followed until
+  the shutdown, when the session's shell `trap` still stopped the Modal app. No GPU left running,
+  no corrupt lines in either raw file. The killed runner never wrote its ledger entry, so it was
+  reconstructed conservatively (12:48–13:26 + 3 min scale-down ≈ $2.70). Lesson: the runner should
+  record GPU time incrementally (e.g. a heartbeat), not only at the end.

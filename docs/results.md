@@ -549,3 +549,18 @@ The T4 idles while waiting but still consumes Colab GPU hours. At this rate 1,50
   sends one message >= 5 times). Known limitation: Gemma was validated only with default prompts,
   normal users and no faults; pushy users and faults appear only in the collection, so a rising loop
   rate there means stop and review.
+
+### 2026-10-04 — First collection hour (Kaggle T4, 6 parallel runs): throughput and the real limit
+
+- 17 runs recorded in ~41 min of run time (~25 runs/hour wall clock), 6 failed (5 RateLimitError
+  even with 8 retries, 1 HTTP 500). Env success 4/17; **customer loops 0/17** with pushy users and
+  faults in the mix (12 default/5 pushy users; 9 runs with faults) — the simulator holds up outside
+  the A/B conditions. 100% GPU.
+- **The binding limit is Gemma's 16K input tokens per minute**: every quota error names
+  `GenerateContentInputTokensPerModelPerMinute-FreeTier` (72 x 429 in the log, plus 16 x 500 and
+  16 x 503). Requests/min and requests/day are not the constraint.
+- Customer calls: mean 1,087 input tokens (p90 2,057), 9.9 calls per run. Ceiling at 16K/min:
+  14.7 calls/min ≈ **89 runs/hour** if paced perfectly, ~71 at 80% of the cap. Measured ~25:
+  bouncing off the limit wastes requests, and immediate retries land in the same exhausted minute.
+- Projection: at ~25/hour, 1,500 traces ≈ 60 GPU hours (~2 Kaggle weeks at 30 h/week), 3,000 ≈ 120;
+  at ~70/hour, 1,500 ≈ 21 hours and 3,000 ≈ 43 hours.

@@ -625,3 +625,17 @@ The T4 idles while waiting but still consumes Colab GPU hours. At this rate 1,50
 - Caveats: the agent now runs at full precision (Ollama ran Qwen3 in 4-bit), so these traces carry
   a distinct model label (`openai/qwen3-8b`) and the 31 Kaggle traces stay a separate group; the
   customer is self-hosted FP8 Gemma rather than Google's — `customer_loop_runs` keeps watching it.
+- **First GPU start failed (2026-10-04):** Modal first refused H100s without a payment method (card
+  added; workspace limit $29.99 with the $30 credit, so the card is never charged). Then vLLM
+  crashed at start-up: Gemma 4's mixed attention head sizes (256 sliding / 512 full) make vLLM 0.30
+  use FlashAttention 4, which JIT-compiles kernels and needs `nvcc`; the slim Debian image had no
+  CUDA toolkit. The container crash-looped for ~11 min (~$0.70) before I stopped the app; logged
+  in the ledger conservatively as $1.71 (11 min + 15 min overhead).
+- **Fixes:** CUDA 13.0.3 *devel* base image (`nvidia/cuda:13.0.3-devel-ubuntu24.04`, matching
+  vLLM 0.30's CUDA 13 stack) with `CUDA_HOME`; a persistent compile-cache volume so FA4/Triton
+  kernels are not recompiled every cold start; and a one-off `check_gemma_startup` function on a
+  cheaper L40S (~$0.30, `retries=0`, exits instead of crash-looping) to validate the image before
+  the H100 is used again.
+- **Operational rule:** the endpoint is unauthenticated at Modal's edge (our proxy checks the key,
+  but even a rejected request wakes the GPU), so the app is stopped between sessions
+  (`modal app stop atl-serving --yes`) and redeployed only to collect.

@@ -31,15 +31,20 @@ HF_DIR = "/hf"
 # base image already has that directory, and Modal cannot mount a volume on a non-empty path.
 CACHE_DIR = "/atl-compile-cache"
 
-# name -> (Hugging Face repo, port, extra vllm args). Gemma starts first and takes 55% of memory;
-# Qwen then takes 33% of what remains free. KV caches in FP8 (native on H100) double capacity.
+# name -> (Hugging Face repo, port, extra vllm args). Gemma starts first and takes 58% of memory;
+# Qwen then takes 33%. KV caches in FP8 (native on H100) double capacity. Context limits differ:
+# vLLM refuses to start if max-model-len exceeds the KV cache, and Gemma (31.7 GiB of weights,
+# measured on L40S) has little cache left; customer prompts peaked at 3,136 tokens, so 16k is ample.
+# Agent prompts reached ~13k tokens, so Qwen keeps 32k.
 MODELS = {
     "gemma-4-31b": (
         "RedHatAI/gemma-4-31B-it-FP8-dynamic",
         8002,
         [
+            "--max-model-len",
+            "16384",
             "--gpu-memory-utilization",
-            "0.55",
+            "0.58",
             "--reasoning-parser",
             "gemma4",
             "--limit-mm-per-prompt",
@@ -50,6 +55,8 @@ MODELS = {
         "Qwen/Qwen3-8B",
         8001,
         [
+            "--max-model-len",
+            "32768",
             "--gpu-memory-utilization",
             "0.33",
             "--enable-auto-tool-choice",
@@ -60,7 +67,7 @@ MODELS = {
         ],
     ),
 }
-COMMON_ARGS = ["--max-model-len", "32768", "--kv-cache-dtype", "fp8", "--enable-prefix-caching"]
+COMMON_ARGS = ["--kv-cache-dtype", "fp8", "--enable-prefix-caching"]
 
 app = modal.App("atl-serving")
 hf_cache = modal.Volume.from_name("atl-hf-cache", create_if_missing=True)
@@ -131,7 +138,8 @@ def _wait_ready(port: int, proc: subprocess.Popen, timeout_s: float = 1200) -> N
 def check_gemma_startup() -> str:
     """Start Gemma alone on a cheaper GPU, answer one request, exit (validates the image)."""
     repo, port, extra = MODELS["gemma-4-31b"]
-    extra = [a if a != "0.55" else "0.90" for a in extra]  # alone on the GPU here
+    # Alone on a smaller GPU here: more memory share, small context.
+    extra = [{"0.58": "0.90", "16384": "4096"}.get(a, a) for a in extra]
     cmd = [
         "vllm",
         "serve",
@@ -140,8 +148,6 @@ def check_gemma_startup() -> str:
         "gemma-4-31b",
         "--port",
         str(port),
-        "--max-model-len",
-        "4096",
         "--kv-cache-dtype",
         "fp8",
         *extra,

@@ -188,7 +188,7 @@ def run(cfg: AgentRunConfig, *, smoke: bool = False) -> Path:
 
     tasks = _select_tasks(get_tasks(cfg.domain, task_split_name="base"), cfg)
     done = _done_runs(raw_path)
-    pending = [(t, tr) for t in tasks for tr in range(cfg.num_trials) if (t.id, tr) not in done]
+    pending = pending_runs(tasks, cfg.num_trials, done)
     logger.info(
         "%d tasks x %d trials; %d runs already done; %d to run with concurrency %d",
         len(tasks),
@@ -288,6 +288,15 @@ def run(cfg: AgentRunConfig, *, smoke: bool = False) -> Path:
     with ThreadPoolExecutor(max_workers=cfg.max_concurrency) as pool:
         list(pool.map(work, pending))
     return _finish(run_dir, raw_path, cached)
+
+
+def pending_runs(tasks: list[Any], num_trials: int, done: set[tuple[str, int]]) -> list[Any]:
+    """(task, trial) pairs still to run, trial-major: every task once, then every task again.
+
+    A long collection is cut short by Colab sessions; trial-major order keeps task coverage
+    balanced wherever it stops (task-major order would give early tasks all their trials first).
+    """
+    return [(t, tr) for tr in range(num_trials) for t in tasks if (t.id, tr) not in done]
 
 
 def choose_conditions(cfg: AgentRunConfig, task_id: str, trial: int) -> tuple[str, str, bool]:
@@ -469,8 +478,16 @@ def run_stats(run_dir: Path) -> dict[str, Any]:
         "mean_minutes_per_run": round(seconds / len(sims) / 60, 2),
         "runs_per_hour_wall_clock": round(len(sims) / wall * 3600, 1) if wall else None,
         "mean_cost_usd": round(cost / len(sims), 4),
+        # Simulator health: the A/B rejected a customer that repeated itself; keep watching it.
+        "customer_loop_runs": sum(_customer_loops(s) for s in sims),
         "flagged_for_review": flagged,
     }
+
+
+def _customer_loops(sim: dict[str, Any], repeats: int = 5) -> bool:
+    """True if the simulated customer sent the same message `repeats` or more times."""
+    texts = [m.get("content") or "" for m in sim.get("messages") or [] if m.get("role") == "user"]
+    return bool(texts) and Counter(texts).most_common(1)[0][1] >= repeats
 
 
 @app.command("stats")

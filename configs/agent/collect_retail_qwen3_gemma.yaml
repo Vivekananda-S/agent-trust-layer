@@ -1,0 +1,37 @@
+# Main collection (Plan revision 1): Qwen3 8B agent (no-think) on the Colab T4, Gemma 4 31B customer
+# via the free-tier Gemini API (passed the simulator A/B), full mix of prompt variants, pushy users
+# and read-tool faults. All tasks of the domain, up to 10 trials, run trial-major so coverage stays
+# balanced wherever a Colab session stops; rerun the same config to continue. Cost: $0.
+run_name: collect_retail_qwen3_gemma
+domain: retail
+num_tasks: null  # every task in the domain; splits are applied later by task id
+num_trials: 10  # upper bound, not a commitment: stop when the trace target or GPU budget is reached
+seed: 1000  # distinct from the pilots (300), so conditions are drawn afresh
+agent_model: ollama_chat/qwen3:8b
+agent_llm_args:
+  api_base: http://localhost:11434
+  num_ctx: 32768  # required: Ollama's default would silently truncate the policy
+  timeout: 120
+  reasoning_effort: none
+user_model: gemini/gemma-4-31b-it
+user_llm_args:  # Gemma always thinks briefly; the API rejects reasoning_effort
+  num_retries: 8  # free-tier Gemma returns many HTTP 500/503; transport only, not in cache keys
+prompt_variants: {tau2_default: 0.5, sloppy: 0.25, no_policy: 0.25}
+user_variants: {tau2_default: 0.7, pushy: 0.3}
+faults:  # read tools only; see atl/agent/faults.py
+  run_rate: 0.5
+  call_rate: 0.3
+  max_per_run: 2
+  types: [timeout, error, empty, injection]
+# 85% of run time is spent waiting on Gemma, so more runs than Ollama slots (3) keep the GPU busy.
+# Watch data/logs for HTTP 429: Gemma's free tier allows 30 RPM / 16K TPM.
+max_concurrency: 6
+max_steps: 100
+budget_usd: 5.0  # shared cost_log; this config spends nothing (local agent, free-tier Gemma)
+requests_per_minute: 240  # all calls incl. local agent calls; Gemma's own limits are enforced by Google
+prices:  # USD per 1M tokens
+  ollama_chat/qwen3:8b: {input: 0.0, output: 0.0}  # local GPU
+  gemini/gemma-4-31b-it: {input: 0.0, output: 0.0}  # free tier only
+output_dir: data/traces
+cache_dir: data/llm_cache
+cost_log: data/costs.jsonl

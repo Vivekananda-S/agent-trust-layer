@@ -16,6 +16,7 @@ from atl.agent.run_tau2 import (
     _price,
     _select_tasks,
     choose_conditions,
+    pending_runs,
     run,
     run_stats,
 )
@@ -136,6 +137,7 @@ def test_run_stats(tmp_path: Path) -> None:
         "mean_minutes_per_run": 3.0,  # (120 + 240) / 2 s
         "runs_per_hour_wall_clock": 30.0,  # 2 overlapping runs, 10:00 -> 10:04
         "mean_cost_usd": 0.04,  # (0.06 + 0.02) / 2
+        "customer_loop_runs": 0,
         "flagged_for_review": 1,
     }
     assert run_stats(tmp_path / "missing") == {"runs": 0}
@@ -215,3 +217,20 @@ def test_context_overflow_ends_only_that_run(
     lost = [json.loads(x) for x in (run_dir / "failed_runs.jsonl").read_text().splitlines()]
     assert kept == [1]
     assert [(x["trial"], x["error"]) for x in lost] == [(0, "ContextOverflow: too long")]
+
+
+def test_pending_runs_are_trial_major_and_skip_done() -> None:
+    tasks = [SimpleNamespace(id=i) for i in ("a", "b", "c")]
+    got = [(t.id, tr) for t, tr in pending_runs(tasks, 2, done={("b", 0)})]
+    assert got == [("a", 0), ("c", 0), ("a", 1), ("b", 1), ("c", 1)]
+
+
+def test_customer_loop_detection() -> None:
+    from atl.agent.run_tau2 import _customer_loops
+
+    user = lambda text: {"role": "user", "content": text}  # noqa: E731
+    looping = {"messages": [user("Mia Garcia.")] * 5 + [{"role": "assistant", "content": "?"}]}
+    normal = {"messages": [user("hi"), user("thanks"), user("hi")]}
+    assert _customer_loops(looping) is True
+    assert _customer_loops(normal) is False
+    assert _customer_loops({"messages": []}) is False

@@ -533,3 +533,19 @@ retries and free-tier queueing included; a quiet-time probe gave ~6 s), and **84
 spent waiting on Gemma**. Measured 7.4–7.7 runs/hour with 2 parallel runs (Gemini simulator: ~65).
 The T4 idles while waiting but still consumes Colab GPU hours. At this rate 1,500 traces need
 ~200 Colab hours and 3,000 ~400 — far beyond a free tier of ~15–30 GPU hours/week.
+
+### 2026-10-04 — Main collection set up (Qwen3 8B agent, Gemma 4 31B customer)
+
+- Configs `configs/agent/collect_{retail,airline}_qwen3_gemma.yaml`: every task in the domain
+  (114 retail, 50 airline), up to 10 trials, seed 1000, the full condition mix, 8 retries for the
+  customer, **6 parallel runs** (85% of run time waits on Gemma, so more runs than Ollama's 3 slots
+  keep the GPU busy). $0.
+- **Throughput is measured on real collection, not a separate test:** the first hour's
+  `runs_per_hour_wall_clock` decides whether ~1,500–3,000 traces is feasible on free Colab
+  (target >= 40/hour). Every trace collected is kept either way.
+- **Trial-major order** (`pending_runs`): every task once, then every task again, so coverage stays
+  balanced wherever a Colab session stops.
+- **Simulator health is monitored:** `atl-agent stats` now reports `customer_loop_runs` (customer
+  sends one message >= 5 times). Known limitation: Gemma was validated only with default prompts,
+  normal users and no faults; pushy users and faults appear only in the collection, so a rising loop
+  rate there means stop and review.

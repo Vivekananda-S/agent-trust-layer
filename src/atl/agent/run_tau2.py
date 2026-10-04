@@ -27,6 +27,7 @@ import os
 import random
 import subprocess
 import threading
+import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -57,7 +58,19 @@ TAU2_COMMIT_FULL = "5bfa7e37b36656b37dc6d022156be6563c1007f3"  # same pin as pyp
 DEFAULT_TAU2_CHECKOUT = Path("external/tau2-bench")
 SMOKE_DOMAIN = "mock"
 SMOKE_TASK_IDS = ["create_task_1"]
-MAX_CONSECUTIVE_FAILURES = 3  # e.g. a free-tier daily quota is exhausted: stop, resume tomorrow
+MAX_CONSECUTIVE_FAILURES = 3  # e.g. a broken key or daily quota exhausted: stop, resume tomorrow
+# Errors that end one run but say nothing about the setup: provider hiccups (free-tier 429/5xx),
+# a too-long conversation, an empty agent reply. They are logged and retried on the next resume,
+# but never stop the session (free-tier Gemma produced dozens per hour and stopped runs early).
+TRANSIENT_ERROR_NAMES = {
+    "RateLimitError",
+    "InternalServerError",
+    "ServiceUnavailableError",
+    "APIConnectionError",
+    "Timeout",
+    "ContextOverflow",
+}
+TRANSIENT_PAUSE_S = 30.0  # after a provider error, this worker waits before its next run
 # Local (Ollama) context guard. Ollama silently truncates prompts longer than `num_ctx`, which
 # would cut the policy out of the prompt and turn every run into a fake failure.
 # Measured on 1,320 Qwen3 calls (retail + airline): chars/token median 4.8, minimum 3.73.
@@ -275,13 +288,21 @@ def run(cfg: AgentRunConfig, *, smoke: bool = False) -> Path:
                 "user_variant": user,
                 "faulty": faulty,
             }
+            transient = is_transient(e)
             with lock:
                 with (run_dir / "failed_runs.jsonl").open("a", encoding="utf-8") as f:
-                    f.write(json.dumps(loss) + "\n")
-                failures += 1
-                if failures >= MAX_CONSECUTIVE_FAILURES:
-                    logger.error("Stopping after %d consecutive failures", failures)
-                    stop.set()
+                    f.write(json.dumps({**loss, "transient": transient}) + "\n")
+                if not transient:
+                    failures += 1
+                    if failures >= MAX_CONSECUTIVE_FAILURES:
+                        logger.error("Stopping after %d consecutive failures", failures)
+                        stop.set()
+            if (
+                transient
+                and type(e).__name__ != "ContextOverflow"
+                and "content or tool_calls" not in str(e)
+            ):
+                time.sleep(TRANSIENT_PAUSE_S)  # let the provider's per-minute quota recover
             return
         with lock:
             failures = 0
@@ -291,6 +312,14 @@ def run(cfg: AgentRunConfig, *, smoke: bool = False) -> Path:
     with ThreadPoolExecutor(max_workers=cfg.max_concurrency) as pool:
         list(pool.map(work, pending))
     return _finish(run_dir, raw_path, cached)
+
+
+def is_transient(error: BaseException) -> bool:
+    """True for errors that end one run without implying the setup is broken."""
+    if type(error).__name__ in TRANSIENT_ERROR_NAMES:
+        return True
+    # tau2 raises this when the agent (or simulator) sends an empty message.
+    return isinstance(error, ValueError) and "must have either content or tool_calls" in str(error)
 
 
 def pending_runs(tasks: list[Any], num_trials: int, done: set[tuple[str, int]]) -> list[Any]:

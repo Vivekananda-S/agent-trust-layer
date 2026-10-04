@@ -589,3 +589,15 @@ The T4 idles while waiting but still consumes Colab GPU hours. At this rate 1,50
 - Proposed: retries in our wrapper through the limiter (LiteLLM retries off for Gemma; honour
   `retryDelay` on 429, exponential backoff on 5xx), and transient failures no longer count toward
   the stop rule.
+- **Fix: transient errors no longer stop a session** (`is_transient`: 429/5xx/connection/timeout,
+  context overflow, empty agent reply). They are logged in `failed_runs.jsonl` with
+  `transient: true` and retried on the next resume; after a provider error the worker pauses 30 s.
+  Only other errors count toward "stop after 3 consecutive failures". Tested: 4 consecutive rate
+  limits, session continues.
+- **Safe multi-machine storage:** `atl-traces import-zip --zip <session traces.zip>` merges a
+  Kaggle/Colab session into the local dataset, deduplicated by (task id, trial), regenerates
+  traces and review flags, and keeps the session's cost log and logs under `data/imported/` (never
+  mixed into the local budget log). Verified on the real Kaggle zips: session 2 added 14 runs with
+  17 already present; a repeat import added 0.
+- Kaggle's terms allow one account per person, so collection uses one Kaggle account (retail) and
+  free Colab (airline) — separate domains, so the two never overlap.

@@ -234,3 +234,51 @@ def test_customer_loop_detection() -> None:
     assert _customer_loops(looping) is True
     assert _customer_loops(normal) is False
     assert _customer_loops({"messages": []}) is False
+
+
+def test_is_transient() -> None:
+    from atl.agent.run_tau2 import is_transient
+
+    class RateLimitError(Exception): ...
+
+    class InternalServerError(Exception): ...
+
+    class AuthenticationError(Exception): ...
+
+    assert is_transient(RateLimitError("429"))
+    assert is_transient(InternalServerError("500"))
+    assert is_transient(ContextOverflow("long"))
+    assert is_transient(ValueError("AssistantMessage must have either content or tool_calls."))
+    assert not is_transient(AuthenticationError("bad key"))
+    assert not is_transient(ValueError("something else"))
+
+
+@needs_tau2
+def test_transient_failures_do_not_stop_the_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import atl.agent.run_tau2 as runner
+    from atl.agent.llm_cache import cache_namespace
+
+    class RateLimitError(Exception): ...
+
+    real_fake = runner._fake_completion
+    monkeypatch.setattr(runner, "TRANSIENT_PAUSE_S", 0.0)
+
+    def flaky(**kwargs: object) -> object:  # trials 0-3 hit the provider's rate limit
+        if int(cache_namespace.get().rsplit("/", 1)[1]) < 4:
+            raise RateLimitError("429")
+        return real_fake(**kwargs)
+
+    monkeypatch.setattr(runner, "_fake_completion", flaky)
+    cfg = (
+        AgentRunConfig.from_yaml(CONFIGS[0]).as_smoke(tmp_path).model_copy(update={"num_trials": 6})
+    )
+    run(cfg, smoke=True)
+    run_dir = tmp_path / cfg.run_name
+    kept = sorted(
+        json.loads(x)["run_info"]["trial"] for x in (run_dir / "raw.jsonl").read_text().splitlines()
+    )
+    lost = [json.loads(x) for x in (run_dir / "failed_runs.jsonl").read_text().splitlines()]
+    assert kept == [4, 5]  # 4 consecutive transient failures did not stop the session
+    assert len(lost) == 4 and all(x["transient"] for x in lost)

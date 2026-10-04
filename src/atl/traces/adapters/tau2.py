@@ -252,3 +252,18 @@ def convert(
     traces, excluded = convert_raw_file(raw)
     save_traces(traces, out)
     logger.info("Converted %d traces; excluded %s", len(traces), dict(excluded))
+
+
+@app.command("import-zip")
+def import_zip_cmd(
+    zip_path: Annotated[Path, typer.Option("--zip", help="A session's traces.zip.")],
+    traces_dir: Annotated[Path, typer.Option(help="Local traces directory.")] = Path("data/traces"),
+    imported_dir: Annotated[Path, typer.Option(help="Where the zip's logs/costs are kept.")] = Path(
+        "data/imported"
+    ),
+) -> None:
+    """Merge a session zip from Kaggle/Colab into the local dataset (dedup by task, trial)."""
+    from atl.traces.merge import import_zip
+
+    for run, (added, dup) in import_zip(zip_path, traces_dir, imported_dir).items():
+        logger.info("%s: added %d runs, %d already present", run, added, dup)

@@ -48,6 +48,7 @@ from atl.agent.variants import (
     register_prompt_variants,
     with_user_variant,
 )
+from atl.serving.ledger import GpuBudget, record_session, session_seconds
 from atl.traces.adapters.tau2 import RunInfo, convert_raw_file, review_flags
 from atl.traces.schema import save_traces
 
@@ -115,6 +116,8 @@ class AgentRunConfig(BaseModel):
     user_variants: dict[UserVariant, float] = Field(default_factory=lambda: {"tau2_default": 1.0})
     faults: FaultConfig | None = None  # None = never inject tool faults
     max_concurrency: int = Field(default=1, ge=1)
+    max_session_s: float | None = Field(default=None, gt=0)  # stop scheduling new runs after this
+    gpu_budget: GpuBudget | None = None  # self-hosted endpoint: cap session time by a GPU ledger
     max_steps: int = Field(default=100, ge=1)
     budget_usd: float = Field(ge=0)
     requests_per_minute: float | None = Field(default=None, gt=0)  # all calls, every model
@@ -185,6 +188,14 @@ def run(cfg: AgentRunConfig, *, smoke: bool = False) -> Path:
     run_dir = cfg.output_dir / cfg.run_name
     run_dir.mkdir(parents=True, exist_ok=True)
     raw_path = run_dir / "raw.jsonl"
+    cfg = cfg.model_copy(
+        update={
+            "agent_llm_args": expand_env(cfg.agent_llm_args),
+            "user_llm_args": expand_env(cfg.user_llm_args),
+        }
+    )
+    session_limit = cfg.max_session_s if smoke else session_time_limit(cfg)  # smoke: no ledger
+    session_start = time.monotonic()
 
     cached = CachedCompletion(
         _fake_completion if smoke else _guard_context(litellm.completion),
@@ -269,6 +280,8 @@ def run(cfg: AgentRunConfig, *, smoke: bool = False) -> Path:
         task, trial = item
         if stop.is_set():
             return
+        if session_limit is not None and time.monotonic() - session_start > session_limit:
+            return  # session time is up: in-flight runs finish, no new ones start
         try:
             record = run_one(task, trial)
         except BudgetExceeded as e:
@@ -309,14 +322,49 @@ def run(cfg: AgentRunConfig, *, smoke: bool = False) -> Path:
             with raw_path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
-    with ThreadPoolExecutor(max_workers=cfg.max_concurrency) as pool:
-        list(pool.map(work, pending))
+    try:
+        with ThreadPoolExecutor(max_workers=cfg.max_concurrency) as pool:
+            list(pool.map(work, pending))
+    finally:
+        if cfg.gpu_budget is not None and not smoke:
+            record_session(cfg.gpu_budget, cfg.run_name, time.monotonic() - session_start)
     return _finish(run_dir, raw_path, cached)
+
+
+def expand_env(args: dict[str, Any]) -> dict[str, Any]:
+    """Expand ${VAR} in string values (endpoint URLs, keys) from the environment.
+
+    Secrets stay in .env / platform secrets, never in configs. An unset variable is an error,
+    not a silent empty string.
+    """
+    out: dict[str, Any] = {}
+    for k, v in args.items():
+        if isinstance(v, str):
+            expanded = os.path.expandvars(v)
+            if "${" in expanded:
+                raise ValueError(f"llm arg {k!r}: unset environment variable in {v!r}")
+            out[k] = expanded
+        elif isinstance(v, dict):
+            out[k] = expand_env(v)
+        else:
+            out[k] = v
+    return out
+
+
+def session_time_limit(cfg: AgentRunConfig) -> float | None:
+    """Seconds this session may schedule new runs: min of max_session_s and the GPU ledger."""
+    limits = [cfg.max_session_s] if cfg.max_session_s else []
+    if cfg.gpu_budget is not None:
+        limits.append(session_seconds(cfg.gpu_budget))  # raises BudgetExhausted when spent
+    return min(limits) if limits else None
 
 
 def is_transient(error: BaseException) -> bool:
     """True for errors that end one run without implying the setup is broken."""
     if type(error).__name__ in TRANSIENT_ERROR_NAMES:
+        return True
+    # vLLM rejects an over-long prompt (it never truncates silently): one long conversation.
+    if type(error).__name__ == "BadRequestError" and "maximum context length" in str(error):
         return True
     # tau2 raises this when the agent (or simulator) sends an empty message.
     return isinstance(error, ValueError) and "must have either content or tool_calls" in str(error)
@@ -551,9 +599,14 @@ def run_cmd(
     config: Annotated[Path, typer.Option("--config", help="Agent run config YAML.")],
     smoke: Annotated[bool, typer.Option(help="Offline: mock domain, fake LLM, $0.")] = False,
     smoke_dir: Annotated[Path, typer.Option(help="Output root for --smoke.")] = Path("data/smoke"),
+    max_session_s: Annotated[
+        float | None, typer.Option(help="Stop scheduling new runs after this many seconds.")
+    ] = None,
 ) -> None:
     """Run the agent on the configured tasks."""
     cfg = AgentRunConfig.from_yaml(config)
+    if max_session_s is not None:
+        cfg = cfg.model_copy(update={"max_session_s": max_session_s})
     if smoke:
         cfg = cfg.as_smoke(smoke_dir)
     else:

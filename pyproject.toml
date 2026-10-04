@@ -32,6 +32,10 @@ agent = [
     # tau2's core import pulls in its voice module, which needs this (listed only in tau2[voice]).
     "websockets>=13.0",
 ]
+# Self-hosted serving on Modal (src/atl/serving/modal_app.py); vLLM itself runs in the Modal image.
+serving = [
+    "modal>=1.6,<2",
+]
 # GPU training stack. Lower bounds for now; pin exact versions after the first Colab T4 run.
 train = [
     "torch>=2.3",

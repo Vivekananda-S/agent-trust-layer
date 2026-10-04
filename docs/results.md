@@ -601,3 +601,27 @@ The T4 idles while waiting but still consumes Colab GPU hours. At this rate 1,50
   17 already present; a repeat import added 0.
 - Kaggle's terms allow one account per person, so collection uses one Kaggle account (retail) and
   free Colab (airline) — separate domains, so the two never overlap.
+
+### 2026-10-04 — Self-hosted collection on Modal, built to finish inside a $30 credit
+
+- **Why:** the free Gemma API caps collection at ~25 runs/hour (input-token quota + Google 500s).
+  Modal's Starter plan gives $30/month of GPU credit. One H100 ($3.95/h) serves both models with
+  vLLM 0.30.0: Qwen3 8B (agent, thinking off) and RedHatAI/gemma-4-31B-it-FP8-dynamic (customer,
+  thinking on — the same model that passed the A/B, Apache 2.0, not gated). No rate limits; vLLM
+  batches 16 parallel conversations. The tau2 runner runs locally (no GPU) against the endpoint.
+- **Code:** `src/atl/serving/modal_app.py` (two vLLM servers on one GPU, Gemma first at 55% memory,
+  Qwen at 33%, FP8 KV cache, prefix caching; weights cached in a Modal Volume and downloaded by a
+  CPU-only function so no GPU time pays for downloads), `proxy.py` (routes by `model`, bearer-key
+  auth, tested), `ledger.py` (GPU cost ledger, tested). Runner: `${VAR}` expansion for endpoint and
+  key (secrets stay in .env), `--max-session-s`, `gpu_budget` session limit, vLLM context-length
+  errors treated as per-run.
+- **Budget guards, layered:** `max_containers=1` (never two GPUs); scale to zero 3 min after the
+  last request; ledger charges each session wall time + 15 min overhead and refuses to start once
+  estimated spend would pass **$27**; Modal's workspace spending limit ($30) is the hard stop.
+- **Budget arithmetic:** pilot = first 20 min of the real retail collection ≈ (1,200 + 900) s ×
+  $3.95/h ≈ **$2.30**. That leaves ~$24.7 ≈ one ~6.0 h session. Runs affordable = measured
+  runs/hour × ~6 h: 1,500 traces need >= ~250 runs/hour; at 150/hour we get ~900. The pilot
+  decides the target size before the rest of the credit is spent.
+- Caveats: the agent now runs at full precision (Ollama ran Qwen3 in 4-bit), so these traces carry
+  a distinct model label (`openai/qwen3-8b`) and the 31 Kaggle traces stay a separate group; the
+  customer is self-hosted FP8 Gemma rather than Google's — `customer_loop_runs` keeps watching it.

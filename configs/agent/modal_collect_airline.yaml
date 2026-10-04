@@ -1,0 +1,45 @@
+# Main collection on a self-hosted Modal H100 (Plan revision 1): Qwen3 8B agent (vLLM, thinking off)
+# and Gemma 4 31B FP8 customer (vLLM, thinking on, as the Google-served Gemma that passed the
+# simulator A/B), both on ONE GPU behind atl.serving.proxy. The runner runs locally (no GPU).
+# Endpoint URL and key come from .env (ATL_SERVING_URL, ATL_SERVING_KEY), never from this file.
+# Spend is capped by gpu_budget (ledger in data/modal_ledger.jsonl) below the $30 Modal credit.
+run_name: modal_collect_airline_qwen3vllm_gemma
+domain: airline
+num_tasks: null  # every task; splits are applied later by task id
+num_trials: 10  # upper bound; the GPU ledger decides how many we can afford
+seed: 2000  # distinct from the Kaggle collection (1000)
+agent_model: openai/qwen3-8b
+agent_llm_args:
+  api_base: ${ATL_SERVING_URL}/v1
+  api_key: ${ATL_SERVING_KEY}
+  timeout: 300
+  extra_body: {chat_template_kwargs: {enable_thinking: false}}
+user_model: openai/gemma-4-31b
+user_llm_args:
+  api_base: ${ATL_SERVING_URL}/v1
+  api_key: ${ATL_SERVING_KEY}
+  timeout: 300
+  num_retries: 3
+  extra_body: {chat_template_kwargs: {enable_thinking: true}}
+prompt_variants: {tau2_default: 0.5, sloppy: 0.25, no_policy: 0.25}
+user_variants: {tau2_default: 0.7, pushy: 0.3}
+faults:  # read tools only; see atl/agent/faults.py
+  run_rate: 0.5
+  call_rate: 0.3
+  max_per_run: 2
+  types: [timeout, error, empty, injection]
+max_concurrency: 16  # vLLM batches parallel conversations; no free-tier caps on our own GPU
+max_steps: 100
+budget_usd: 5.0  # API cost log (stays $0 here); GPU spend is governed by gpu_budget
+gpu_budget:
+  gpu: H100
+  hourly_usd: 3.95  # Modal H100 list price, modal.com/pricing (checked 2026-10-04)
+  cap_usd: 27.0  # $3 margin under the $30 credit; Modal's own spending limit is the hard stop
+  overhead_s: 900  # cold start + 3 min scale-down charged per session
+  ledger: data/modal_ledger.jsonl
+prices:
+  openai/qwen3-8b: {input: 0.0, output: 0.0}
+  openai/gemma-4-31b: {input: 0.0, output: 0.0}
+output_dir: data/traces
+cache_dir: data/llm_cache
+cost_log: data/costs.jsonl

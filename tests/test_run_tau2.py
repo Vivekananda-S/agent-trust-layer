@@ -248,6 +248,10 @@ def test_is_transient() -> None:
     assert is_transient(RateLimitError("429"))
     assert is_transient(InternalServerError("500"))
     assert is_transient(ContextOverflow("long"))
+
+    class ContextWindowExceededError(Exception): ...
+
+    assert is_transient(ContextWindowExceededError("maximum context length is 32768 tokens"))
     assert is_transient(ValueError("AssistantMessage must have either content or tool_calls."))
     assert not is_transient(AuthenticationError("bad key"))
     assert not is_transient(ValueError("something else"))

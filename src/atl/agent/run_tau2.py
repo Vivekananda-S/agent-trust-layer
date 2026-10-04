@@ -70,6 +70,7 @@ TRANSIENT_ERROR_NAMES = {
     "APIConnectionError",
     "Timeout",
     "ContextOverflow",
+    "ContextWindowExceededError",  # LiteLLM's name for a prompt over the server's context
 }
 TRANSIENT_PAUSE_S = 30.0  # after a provider error, this worker waits before its next run
 # Local (Ollama) context guard. Ollama silently truncates prompts longer than `num_ctx`, which

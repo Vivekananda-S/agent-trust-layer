@@ -27,7 +27,9 @@ import modal
 VLLM_VERSION = "0.30.0"
 GPU = os.environ.get("ATL_GPU", "H100")
 HF_DIR = "/hf"
-CACHE_DIR = "/cache"  # compiled kernels (FA4, Triton, torch.compile) persist across cold starts
+# Compiled kernels (FA4, Triton, torch.compile) persist across cold starts. Not /cache: the CUDA
+# base image already has that directory, and Modal cannot mount a volume on a non-empty path.
+CACHE_DIR = "/atl-compile-cache"
 
 # name -> (Hugging Face repo, port, extra vllm args). Gemma starts first and takes 55% of memory;
 # Qwen then takes 33% of what remains free. KV caches in FP8 (native on H100) double capacity.

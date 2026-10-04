@@ -4,9 +4,10 @@ Modal exposes one port per web endpoint; the agent model and the customer simula
 their own vLLM server, so this proxy routes OpenAI-style requests by their `model` field and
 checks a bearer key. Routing and auth are pure functions (tested locally); the HTTP app is
 built only inside the Modal container, where fastapi and httpx are installed.
-"""
 
-from __future__ import annotations
+No `from __future__ import annotations` here: FastAPI resolves handler type hints at runtime, and
+`Request` is imported inside `build_app`, so string annotations made it a missing query field.
+"""
 
 import hmac
 from typing import Any

@@ -92,3 +92,17 @@ def test_vllm_context_error_is_transient() -> None:
 
     assert is_transient(BadRequestError("This model's maximum context length is 32768 tokens"))
     assert not is_transient(BadRequestError("invalid tool schema"))
+
+
+def test_proxy_app_parses_requests() -> None:
+    from fastapi.testclient import TestClient
+
+    from atl.serving.proxy import build_app
+
+    client = TestClient(build_app(UPSTREAMS, "s3cret"))
+    assert client.get("/health").json() == {"models": ["gemma-4-31b", "qwen3-8b"]}
+    body = {"model": "qwen3-8b", "messages": [{"role": "user", "content": "hi"}]}
+    assert client.post("/v1/chat/completions", json=body).status_code == 401
+    bad = {**body, "model": "nope"}
+    r = client.post("/v1/chat/completions", json=bad, headers={"Authorization": "Bearer s3cret"})
+    assert r.status_code == 404  # parsed the body and routed: not a 422 validation error

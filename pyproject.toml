@@ -52,6 +52,8 @@ train = [
 dev = [
     "pytest>=8.2",
     "ruff>=0.6",
+    "fastapi>=0.115",  # tests for the serving proxy
+    "httpx>=0.27",
 ]
 
 [tool.hatch.metadata]

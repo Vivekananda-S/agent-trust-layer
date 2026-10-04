@@ -564,3 +564,11 @@ The T4 idles while waiting but still consumes Colab GPU hours. At this rate 1,50
   bouncing off the limit wastes requests, and immediate retries land in the same exhausted minute.
 - Projection: at ~25/hour, 1,500 traces ≈ 60 GPU hours (~2 Kaggle weeks at 30 h/week), 3,000 ≈ 120;
   at ~70/hour, 1,500 ≈ 21 hours and 3,000 ≈ 43 hours.
+- **Fix: per-model rate limiter** (`src/atl/agent/rate_limit.py`, 9 tests). A sliding 60 s window
+  of requests and input tokens per model; before a paid call it reserves an over-estimate
+  (chars / 3.5; the Gemini tokenizer measured 3.70–4.16 chars/token) and waits until the call fits,
+  then reconciles with the reported `prompt_tokens`. Cache hits never wait; unlimited models pass
+  through; thread-safe (tested with 4 threads). Collection configs pace Gemma at
+  `rpm: 25, input_tpm: 13000` (~80% of 30 / 16K). Expected ~50–65 runs/hour (13K / 1,087 tokens =
+  12 calls/min ≈ 72 runs/hour, less in-flight over-estimates); to be confirmed on Kaggle.
+  Known gap: LiteLLM's internal retries (HTTP 500s) bypass the limiter.

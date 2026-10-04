@@ -10,6 +10,8 @@
   the budget cap holds across sessions, not just within one process.
 - Before each paid call, the cap is checked (`BudgetExceeded`) and calls are spaced to stay
   under a requests-per-minute limit (free tiers enforce this).
+- An optional per-model `RateLimiter` paces paid calls under provider caps (requests and input
+  tokens per minute), reserving an estimate before the call and reconciling it after.
 - Thread-safe for parallel runs: the lock guards only bookkeeping (budget check, rate-limit
   slot, counters, log writes), never the LLM call itself. With N calls in flight the cap can be
   overshot by at most N calls' cost.
@@ -28,6 +30,8 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from atl.agent.rate_limit import RateLimiter, estimate_input_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +68,7 @@ class CachedCompletion:
         to_dict: Callable[[Any], dict[str, Any]],
         from_dict: Callable[[dict[str, Any]], Any],
         requests_per_minute: float | None = None,
+        rate_limiter: RateLimiter | None = None,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
@@ -75,6 +80,7 @@ class CachedCompletion:
         self._to_dict = to_dict
         self._from_dict = from_dict
         self._min_interval = 60.0 / requests_per_minute if requests_per_minute else 0.0
+        self._rate_limiter = rate_limiter
         self._clock = clock
         self._sleep = sleep
         self._next_slot = float("-inf")  # earliest start time for the next paid call
@@ -102,6 +108,13 @@ class CachedCompletion:
                 raise BudgetExceeded(
                     f"spent ${self.spent_usd:.4f} of ${self._budget:.2f}; raise budget_usd to go on"
                 )
+        # Per-model pacing (may wait) happens outside the lock, before the global slot.
+        handle = (
+            self._rate_limiter.acquire(model, estimate_input_tokens(kwargs))
+            if self._rate_limiter
+            else None
+        )
+        with self._lock:
             now = self._clock()
             start = max(now, self._next_slot)  # reserve the next rate-limit slot
             self._next_slot = start + self._min_interval
@@ -115,6 +128,8 @@ class CachedCompletion:
 
         record = {"model": model, "namespace": namespace, "response": self._to_dict(response)}
         record["usage"] = record["response"].get("usage")
+        if self._rate_limiter:
+            self._rate_limiter.reconcile(handle, (record["usage"] or {}).get("prompt_tokens"))
         _atomic_write(path, json.dumps(record, ensure_ascii=False))
         self._log(key, model, namespace, cost=cost, cached=False, usage=record["usage"])
         return response

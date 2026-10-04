@@ -39,6 +39,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from atl.agent.faults import FaultConfig, FaultInjector, active_injector, install_fault_hook
 from atl.agent.llm_cache import BudgetExceeded, CachedCompletion, cache_namespace
+from atl.agent.rate_limit import ModelLimit, RateLimiter
 from atl.agent.variants import (
     AGENT_NAMES,
     PromptVariant,
@@ -103,7 +104,8 @@ class AgentRunConfig(BaseModel):
     max_concurrency: int = Field(default=1, ge=1)
     max_steps: int = Field(default=100, ge=1)
     budget_usd: float = Field(ge=0)
-    requests_per_minute: float | None = Field(default=None, gt=0)
+    requests_per_minute: float | None = Field(default=None, gt=0)  # all calls, every model
+    model_limits: dict[str, ModelLimit] = Field(default_factory=dict)  # per-model RPM / input TPM
     prices: dict[str, Price] = Field(default_factory=dict)  # used before LiteLLM's price table
     output_dir: Path = Path("data/traces")
     cache_dir: Path = Path("data/llm_cache")
@@ -180,6 +182,7 @@ def run(cfg: AgentRunConfig, *, smoke: bool = False) -> Path:
         to_dict=lambda r: r.to_dict(),
         from_dict=lambda d: litellm.ModelResponse(**d),
         requests_per_minute=cfg.requests_per_minute,
+        rate_limiter=RateLimiter(cfg.model_limits) if cfg.model_limits else None,
     )
     tau2_llm.completion = cached  # tau2 calls `completion` from this module for every LLM call
     register_prompt_variants()

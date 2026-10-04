@@ -24,11 +24,14 @@ faults:  # read tools only; see atl/agent/faults.py
   max_per_run: 2
   types: [timeout, error, empty, injection]
 # 85% of run time is spent waiting on Gemma, so more runs than Ollama slots (3) keep the GPU busy.
-# Watch data/logs for HTTP 429: Gemma's free tier allows 30 RPM / 16K TPM.
+# model_limits below keeps Gemma under its free-tier caps; 429s in data/logs should now be rare.
 max_concurrency: 6
 max_steps: 100
 budget_usd: 5.0  # shared cost_log; this config spends nothing (local agent, free-tier Gemma)
 requests_per_minute: 240  # all calls incl. local agent calls; Gemma's own limits are enforced by Google
+model_limits:  # pace Gemma just under its free-tier caps (30 RPM, 16K input tokens/min) instead of
+  # bouncing off them: the first hour hit 72 x 429 at ~25 runs/hour; the paced ceiling is ~70
+  gemini/gemma-4-31b-it: {rpm: 25, input_tpm: 13000}
 prices:  # USD per 1M tokens
   ollama_chat/qwen3:8b: {input: 0.0, output: 0.0}  # local GPU
   gemini/gemma-4-31b-it: {input: 0.0, output: 0.0}  # free tier only

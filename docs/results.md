@@ -656,3 +656,10 @@ The T4 idles while waiting but still consumes Colab GPU hours. At this rate 1,50
 - tau2 logs an ERROR for every call because LiteLLM has no price for self-hosted model names
   (`This model isn't mapped yet`); harmless — our price table logs them at $0 and GPU cost lives in
   the ledger.
+- **Ledger calibrated to Modal's dashboard:** actual spend $3.42 ($26.58 of $30 left) vs ledger
+  estimate $5.48 — the estimate was conservative as intended (mostly the 15-minute per-session
+  overhead). A calibration entry sets the ledger to the actual $3.42; the $27 cap still leaves ~$3
+  under the $29.99 Modal limit, and per-session overhead keeps over-estimating.
+- **Main session launched (detached, survives tool timeouts):** deploy -> warm-up -> airline (all
+  500 runs) -> retail (until the ledger's time runs out, ~5.7 h total ≈ ~1,500 runs at 262/hour)
+  -> the app is always stopped on exit (shell `trap`). Traces land directly in local `data/traces/`.

@@ -77,9 +77,6 @@ image = (
             "HF_HOME": HF_DIR,
             "HF_HUB_ENABLE_HF_TRANSFER": "1",
             "CUDA_HOME": "/usr/local/cuda",
-            "XDG_CACHE_HOME": CACHE_DIR,
-            "VLLM_CACHE_ROOT": f"{CACHE_DIR}/vllm",
-            "TRITON_CACHE_DIR": f"{CACHE_DIR}/triton",
         }
     )
     .add_local_python_source("atl")
@@ -94,6 +91,21 @@ def download_weights() -> None:
     for repo, _, _ in MODELS.values():
         snapshot_download(repo)
     hf_cache.commit()
+
+
+# Cache locations are set only for the vLLM processes at run time: set image-wide, the image build
+# itself wrote into XDG_CACHE_HOME and Modal then refused to mount the volume on that path.
+RUNTIME_CACHE_ENV = {
+    "XDG_CACHE_HOME": CACHE_DIR,
+    "VLLM_CACHE_ROOT": f"{CACHE_DIR}/vllm",
+    "TRITON_CACHE_DIR": f"{CACHE_DIR}/triton",
+    "TORCHINDUCTOR_CACHE_DIR": f"{CACHE_DIR}/inductor",
+}
+
+
+def _vllm(cmd: list[str]) -> subprocess.Popen:
+    """Start a vLLM server with the persistent compile caches."""
+    return subprocess.Popen(cmd, env={**os.environ, **RUNTIME_CACHE_ENV})
 
 
 def _wait_ready(port: int, proc: subprocess.Popen, timeout_s: float = 1200) -> None:
@@ -134,7 +146,7 @@ def check_gemma_startup() -> str:
         "fp8",
         *extra,
     ]
-    proc = subprocess.Popen(cmd)
+    proc = _vllm(cmd)
     try:
         _wait_ready(port, proc)
         body = json.dumps(
@@ -181,7 +193,7 @@ def serve() -> None:
             *COMMON_ARGS,
             *extra,
         ]
-        _wait_ready(port, subprocess.Popen(cmd))
+        _wait_ready(port, _vllm(cmd))
     subprocess.Popen(
         [
             "uvicorn",

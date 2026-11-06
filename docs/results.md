@@ -685,3 +685,24 @@ The T4 idles while waiting but still consumes Colab GPU hours. At this rate 1,50
 - The phase 1 trace target (Plan revision 1: ~1,500 with a validated simulator) is met.
   Still open for the phase 1 gate: held-out-model traces (Llama 3.1 8B on test-pool tasks; only
   10 benchmark traces so far) and freezing the split manifest.
+
+### 2026-11-07 — Data loss: laptop OS failure; 102 traces recovered from Drive
+
+- The Ubuntu laptop's OS failed; the machine is now Windows 11. `data/` lived only on the local
+  disk, so the Modal collection (1,620 traces), the pilots, the A/B arms and the 31 Kaggle traces
+  are gone. Code, configs and this log were safe in git.
+- **Recovered from a Google Drive copy dated 2026-10-03** (before the Modal runs): 102 traces in 5
+  runs, 44 unique tasks, all valid against schema 1.0 — bench retail Llama 3.1 8B 10 (env success
+  20%), bench retail Qwen3 8B 10 (50%) and no-think 10 (60%), diversity airline 24 (21%) and
+  retail 48 (35%) — plus logs, `costs.jsonl` and the LLM cache (2,339 entries).
+- No gold data existed yet (the split manifest was not frozen), so the gold rule was not affected.
+- **Lesson:** a dataset that cost ~$27 of GPU credit had no off-machine copy. Fixes: the restored
+  data is in a private HF dataset (`vivekanandashonti/atl-data`, LLM cache excluded), and
+  `scripts/modal_session.sh` now uploads `data/` there every 30 min during a session and once on
+  exit, so a crash loses at most 30 min of traces. The session script also runs on Windows
+  (Git Bash; `.venv/Scripts` layout).
+- New `ATL_SERVING_KEY` generated (the old one existed only in the lost `.env`); the Modal secret
+  `atl-serving` was overwritten with it.
+- Phase 1 status reset: ~100 traces against the ~1,500 target. Modal's monthly $30 credit has
+  renewed, so the main collection is to be re-run with the same setup (Qwen3 8B agent, Gemma 4
+  31B FP8 customer, one H100).

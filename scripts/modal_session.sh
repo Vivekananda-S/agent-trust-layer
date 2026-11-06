@@ -1,6 +1,6 @@
 #!/bin/bash
 # One collection session on Modal: deploy, warm up, run the given domains, ALWAYS stop the app.
-# Usage (Linux/WSL): setsid nohup scripts/modal_session.sh retail [airline ...] > /dev/null 2>&1 < /dev/null &
+# Usage (Linux/WSL): setsid nohup scripts/modal_session.sh retail [airline | path/to/cfg.yaml ...] > /dev/null 2>&1 < /dev/null &
 # Usage (Windows):   Start-Process "C:\Program Files\Git\usr\bin\bash.exe" -ArgumentList
 #                    "scripts/modal_session.sh","airline","retail" -WindowStyle Hidden
 # The trap also fires on a graceful OS shutdown (SIGTERM), so the GPU never outlives the session.
@@ -45,7 +45,10 @@ PY
 ( while sleep 1800; do backup; done ) &
 BACKUP_PID=$!
 for cfg in "$@"; do
-  echo "$(date -u +%T) run $cfg" >> $LOG
-  $BIN/atl-agent run --config configs/agent/modal_collect_$cfg.yaml >> data/logs/modal_collect_$cfg.log 2>&1
-  echo "$(date -u +%T) $cfg exit=$?" >> $LOG
+  # A domain name ("retail") means configs/agent/modal_collect_<domain>.yaml; a path is used as is.
+  case $cfg in *.yaml) path=$cfg ;; *) path=configs/agent/modal_collect_$cfg.yaml ;; esac
+  name=$(basename "$path" .yaml)
+  echo "$(date -u +%T) run $path" >> $LOG
+  $BIN/atl-agent run --config "$path" >> "data/logs/$name.log" 2>&1
+  echo "$(date -u +%T) $name exit=$?" >> $LOG
 done

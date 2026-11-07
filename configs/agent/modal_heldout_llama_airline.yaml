@@ -4,14 +4,14 @@
 # Endpoint URL and key come from .env (ATL_SERVING_URL, ATL_SERVING_KEY), never from this file.
 run_name: modal_heldout_airline_llama31vllm_gemma
 domain: airline
-task_ids:  # the 7 airline test tasks of splits/splits_v1.json
-  - tau2/airline/1
-  - tau2/airline/6
-  - tau2/airline/15
-  - tau2/airline/17
-  - tau2/airline/31
-  - tau2/airline/37
-  - tau2/airline/38
+task_ids:  # the 7 airline test tasks of splits/splits_v1.json (tau2's own ids)
+  - "1"
+  - "6"
+  - "15"
+  - "17"
+  - "31"
+  - "37"
+  - "38"
 num_trials: 8
 seed: 4000  # distinct from every other collection
 agent_model: openai/llama-3.1-8b

@@ -17,8 +17,20 @@ from atl.serving.proxy import UPSTREAMS, authorized, route
 
 def test_route_by_model_name() -> None:
     assert route("qwen3-8b", UPSTREAMS) == "http://127.0.0.1:8001"
+    assert route("llama-3.1-8b", UPSTREAMS) == "http://127.0.0.1:8001"  # same agent slot
     assert route("gemma-4-31b", UPSTREAMS) == "http://127.0.0.1:8002"
     assert route("gpt-x", UPSTREAMS) is None
+
+
+def test_served_models_is_customer_plus_one_agent() -> None:
+    from atl.serving.modal_app import served_models
+
+    assert list(served_models("llama-3.1-8b")) == ["gemma-4-31b", "llama-3.1-8b"]
+    assert list(served_models("qwen3-8b")) == ["gemma-4-31b", "qwen3-8b"]
+    with pytest.raises(ValueError):
+        served_models("gemma-4-31b")  # the customer is not an agent
+    with pytest.raises(ValueError):
+        served_models("gpt-x")
 
 
 def test_bearer_auth() -> None:
@@ -100,7 +112,7 @@ def test_proxy_app_parses_requests() -> None:
     from atl.serving.proxy import build_app
 
     client = TestClient(build_app(UPSTREAMS, "s3cret"))
-    assert client.get("/health").json() == {"models": ["gemma-4-31b", "qwen3-8b"]}
+    assert client.get("/health").json() == {"models": ["gemma-4-31b", "llama-3.1-8b", "qwen3-8b"]}
     body = {"model": "qwen3-8b", "messages": [{"role": "user", "content": "hi"}]}
     assert client.post("/v1/chat/completions", json=body).status_code == 401
     bad = {**body, "model": "nope"}

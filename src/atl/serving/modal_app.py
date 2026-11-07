@@ -1,6 +1,7 @@
-"""Modal app: Qwen3 8B (agent) and Gemma 4 31B FP8 (customer simulator) on ONE GPU.
+"""Modal app: one agent model and Gemma 4 31B FP8 (customer simulator) on ONE GPU.
 
 Deploy:   modal deploy src/atl/serving/modal_app.py        (ATL_GPU=H100 by default)
+          ATL_AGENT=llama-3.1-8b modal deploy ...        (agent slot; default qwen3-8b)
 Weights:  modal run src/atl/serving/modal_app.py::download_weights   (CPU only, once)
 Check:    modal run src/atl/serving/modal_app.py::check_gemma_startup  (cheap L40S, exits)
 
@@ -9,9 +10,9 @@ last request, and the local GPU ledger (atl.serving.ledger) limits session time.
 spending limit in the Modal workspace as the hard stop.
 
 Both servers are OpenAI-compatible vLLM servers behind `atl.serving.proxy`, which routes by the
-request's `model` ("qwen3-8b" or "gemma-4-31b") and checks the bearer key from the Modal secret
-`atl-serving` (ATL_SERVING_KEY). vLLM rejects over-long prompts with an error instead of silently
-truncating them, so the Ollama context guard is not needed here.
+request's `model` ("qwen3-8b", "llama-3.1-8b" or "gemma-4-31b") and checks the bearer key from
+the Modal secret `atl-serving` (ATL_SERVING_KEY). vLLM rejects over-long prompts with an error
+instead of silently truncating them, so the Ollama context guard is not needed here.
 """
 
 from __future__ import annotations
@@ -26,6 +27,9 @@ import modal
 
 VLLM_VERSION = "0.30.0"
 GPU = os.environ.get("ATL_GPU", "H100")
+# The agent slot holds ONE agent model next to Gemma (the H100 cannot hold Gemma and two 8B
+# agents). Chosen at deploy time and passed into the container through a secret (below).
+AGENT = os.environ.get("ATL_AGENT", "qwen3-8b")
 HF_DIR = "/hf"
 # Compiled kernels (FA4, Triton, torch.compile) persist across cold starts. Not /cache: the CUDA
 # base image already has that directory, and Modal cannot mount a volume on a non-empty path.
@@ -66,7 +70,34 @@ MODELS = {
             "qwen3",
         ],
     ),
+    # Held-out agent (drift test): same slot, port and context as Qwen, full precision (16 GB).
+    # Gated on Hugging Face: the weight download needs a token with the licence accepted.
+    "llama-3.1-8b": (
+        "meta-llama/Llama-3.1-8B-Instruct",
+        8001,
+        [
+            "--max-model-len",
+            "32768",
+            "--gpu-memory-utilization",
+            "0.33",
+            "--enable-auto-tool-choice",
+            "--tool-call-parser",
+            "llama3_json",
+        ],
+    ),
 }
+CUSTOMER = "gemma-4-31b"
+
+
+def served_models(agent: str) -> dict[str, tuple[str, int, list[str]]]:
+    """The customer plus one agent, customer first (it must claim its memory share first)."""
+    if agent == CUSTOMER or agent not in MODELS:
+        raise ValueError(
+            f"unknown agent model {agent!r}; choose from {sorted(set(MODELS) - {CUSTOMER})}"
+        )
+    return {CUSTOMER: MODELS[CUSTOMER], agent: MODELS[agent]}
+
+
 COMMON_ARGS = ["--kv-cache-dtype", "fp8", "--enable-prefix-caching"]
 
 app = modal.App("atl-serving")
@@ -90,9 +121,15 @@ image = (
 )
 
 
-@app.function(image=image, volumes={HF_DIR: hf_cache}, timeout=3600)
+# HF_TOKEN for gated repos (Llama) comes from the Modal secret `huggingface-secret`.
+@app.function(
+    image=image,
+    volumes={HF_DIR: hf_cache},
+    secrets=[modal.Secret.from_name("huggingface-secret")],
+    timeout=3600,
+)
 def download_weights() -> None:
-    """Fill the volume with both models on a CPU container, so no GPU time pays for downloads."""
+    """Fill the volume with every model on a CPU container, so no GPU time pays for downloads."""
     from huggingface_hub import snapshot_download
 
     for repo, _, _ in MODELS.values():
@@ -178,7 +215,7 @@ def check_gemma_startup() -> str:
     image=image,
     gpu=GPU,
     volumes={HF_DIR: hf_cache, CACHE_DIR: compile_cache},
-    secrets=[modal.Secret.from_name("atl-serving")],
+    secrets=[modal.Secret.from_name("atl-serving"), modal.Secret.from_dict({"ATL_AGENT": AGENT})],
     max_containers=1,  # never two GPUs
     scaledown_window=180,  # scale to zero 3 minutes after the last request
     timeout=6 * 3600,
@@ -186,8 +223,8 @@ def check_gemma_startup() -> str:
 @modal.concurrent(max_inputs=200)
 @modal.web_server(port=8000, startup_timeout=1800)
 def serve() -> None:
-    """Start Gemma, then Qwen (sequentially, so memory shares are respected), then the proxy."""
-    for name, (repo, port, extra) in MODELS.items():
+    """Start Gemma, then the agent (in order, so memory shares are respected), then the proxy."""
+    for name, (repo, port, extra) in served_models(os.environ["ATL_AGENT"]).items():
         cmd = [
             "vllm",
             "serve",

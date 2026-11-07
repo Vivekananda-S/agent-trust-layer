@@ -55,7 +55,12 @@ def build_app(upstreams: dict[str, str], key: str) -> Any:
     return app
 
 
-UPSTREAMS = {"qwen3-8b": "http://127.0.0.1:8001", "gemma-4-31b": "http://127.0.0.1:8002"}
+# Both agents share port 8001; only the deployed one answers (vLLM 404s any other model name).
+UPSTREAMS = {
+    "qwen3-8b": "http://127.0.0.1:8001",
+    "llama-3.1-8b": "http://127.0.0.1:8001",
+    "gemma-4-31b": "http://127.0.0.1:8002",
+}
 
 
 def app_from_env() -> Any:

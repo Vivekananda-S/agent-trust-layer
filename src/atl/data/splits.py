@@ -11,8 +11,9 @@ Rules (see CLAUDE.md, "The gold test set rule"):
   through `load_protected_split` and `load_gold`.
 
 Trace routing: traces outside the in-domain list go to `ood`; traces from the held-out agent
-model go to `heldout_model` if their task is a test task and are dropped otherwise (so the
-drift test is not confounded by tasks seen in training); everything else follows its task.
+model (any of its labels in `heldout_models`) go to `heldout_model` if their task is a test task
+and are dropped otherwise (so the drift test is not confounded by tasks seen in training);
+everything else follows its task.
 """
 
 from __future__ import annotations
@@ -64,7 +65,9 @@ class _SplitSettings(BaseModel):
     version: int = Field(ge=1)
     salt: str = Field(min_length=1)
     fractions: dict[str, float]
-    heldout_model: str | None = None
+    # Every label the held-out agent model appears under (e.g. an Ollama and a vLLM name), so
+    # none of its traces can slip into training under a second name.
+    heldout_models: list[str] = Field(default_factory=list)
     in_domains: list[str] = Field(min_length=1)  # every other domain is out-of-domain (ood)
 
     @model_validator(mode="after")
@@ -129,7 +132,7 @@ def trace_split(trace: Trace, manifest: SplitManifest) -> str | None:
         )
     if is_ood:
         return "ood"
-    if trace.agent_model == manifest.heldout_model:
+    if trace.agent_model in manifest.heldout_models:
         return "heldout_model" if task_split == "test" else None
     return task_split
 

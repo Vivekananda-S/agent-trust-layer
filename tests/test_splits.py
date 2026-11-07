@@ -46,7 +46,7 @@ def cfg() -> SplitConfig:
         version=1,
         salt=SALT,
         fractions=FRACTIONS,
-        heldout_model="model-c",
+        heldout_models=["model-c", "model-c-q4"],
         in_domains=["retail", "airline"],
     )
 
@@ -160,6 +160,17 @@ def test_trace_routing(cfg: SplitConfig, traces: list[Trace]) -> None:
         "train": 2,
         "val": 1,
     }
+
+
+def test_every_heldout_label_is_held_out(cfg: SplitConfig, traces: list[Trace]) -> None:
+    """A second label of the held-out model (e.g. a 4-bit Ollama build) must not reach train."""
+    manifest = build_manifest(traces, cfg)
+    test_task = next(t for t, s in manifest.task_splits.items() if s == "test")
+    train_task = next(t for t, s in manifest.task_splits.items() if s == "train")
+    on_test = make_trace("q4_test", test_task, agent_model="model-c-q4")
+    on_train = make_trace("q4_train", train_task, agent_model="model-c-q4")
+    assert trace_split(on_test, manifest) == "heldout_model"
+    assert trace_split(on_train, manifest) is None
 
 
 def test_every_in_domain_is_hash_split(cfg: SplitConfig) -> None:

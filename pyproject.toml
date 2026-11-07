@@ -22,6 +22,7 @@ dependencies = [
 atl-splits = "atl.data.splits:app"
 atl-traces = "atl.traces.adapters.tau2:app"
 atl-agent = "atl.agent.run_tau2:app"
+atl-label = "atl.labels.cli:app"
 
 [project.optional-dependencies]
 # System under test. Pinned to an exact commit so tasks, policies and scoring never drift.
@@ -35,6 +36,10 @@ agent = [
 # Self-hosted serving on Modal (src/atl/serving/modal_app.py); vLLM itself runs in the Modal image.
 serving = [
     "modal>=1.6,<2",
+]
+# Hand-labelling app (src/atl/labels/app.py); runs locally, never on Colab.
+labels = [
+    "streamlit>=1.40,<2",
 ]
 # GPU training stack. Lower bounds for now; pin exact versions after the first Colab T4 run.
 train = [

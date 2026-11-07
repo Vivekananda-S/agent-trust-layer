@@ -1,0 +1,10 @@
+# Seed queue for hand labelling (docs/plan.md section 5, step 1). Train split only.
+# The queue is fixed once labelling starts: `atl-label seed` refuses to overwrite it.
+traces:
+  - data/traces/*/traces.jsonl
+split_manifest: splits/splits_v1.json
+n: 330            # = all train tasks x max_per_task; the first 100 feed the taxonomy review
+seed: 0
+max_per_task: 3   # spread the seed set over many tasks
+queue_path: data/labels/seed_queue_v1.jsonl
+labels_path: data/labels/human.jsonl

@@ -3,7 +3,7 @@
 Deploy:   modal deploy src/atl/serving/modal_app.py        (ATL_GPU=H100 by default)
           ATL_AGENT=llama-3.1-8b modal deploy ...        (agent slot; default qwen3-8b)
 Weights:  modal run src/atl/serving/modal_app.py::download_weights   (CPU only, once)
-Check:    modal run src/atl/serving/modal_app.py::check_gemma_startup  (cheap L40S, exits)
+Check:    modal run src/atl/serving/modal_app.py::check_startup --model llama-3.1-8b  (L40S)
 
 Cost guards: max_containers=1 (never two GPUs), the container scales to zero 3 minutes after the
 last request, and the local GPU ledger (atl.serving.ledger) limits session time. Set a $30
@@ -121,11 +121,15 @@ image = (
 )
 
 
-# HF_TOKEN for gated repos (Llama) comes from the Modal secret `huggingface-secret`.
+# HF_TOKEN for gated repos (Llama) comes from the Modal secret `huggingface-secret`. Every
+# function that starts vLLM needs it too: vLLM queries the Hub for tokenizer files at start-up.
+HF_SECRET = modal.Secret.from_name("huggingface-secret")
+
+
 @app.function(
     image=image,
     volumes={HF_DIR: hf_cache},
-    secrets=[modal.Secret.from_name("huggingface-secret")],
+    secrets=[HF_SECRET],
     timeout=3600,
 )
 def download_weights() -> None:
@@ -165,47 +169,62 @@ def _wait_ready(port: int, proc: subprocess.Popen, timeout_s: float = 1200) -> N
     raise TimeoutError(f"vLLM on port {port} not ready after {timeout_s} s")
 
 
+CHECK_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "get_order_details",
+        "description": "Get the details of an order.",
+        "parameters": {
+            "type": "object",
+            "properties": {"order_id": {"type": "string"}},
+            "required": ["order_id"],
+        },
+    },
+}
+
+
 @app.function(
     image=image,
     gpu="L40S",
     volumes={HF_DIR: hf_cache, CACHE_DIR: compile_cache},
+    secrets=[HF_SECRET],
     timeout=1800,
     retries=0,
 )
-def check_gemma_startup() -> str:
-    """Start Gemma alone on a cheaper GPU, answer one request, exit (validates the image)."""
-    repo, port, extra = MODELS["gemma-4-31b"]
+def check_startup(model: str = CUSTOMER) -> str:
+    """Start one model alone on a cheaper GPU, answer one request, exit (validates image + access).
+
+    Run before any H100 session that serves a model for the first time: a start-up failure here
+    exits once (retries=0) instead of crash-looping an H100.
+    """
+    repo, port, extra = MODELS[model]
     # Alone on a smaller GPU here: more memory share, small context.
-    extra = [{"0.58": "0.90", "16384": "4096"}.get(a, a) for a in extra]
-    cmd = [
-        "vllm",
-        "serve",
-        repo,
-        "--served-model-name",
-        "gemma-4-31b",
-        "--port",
-        str(port),
-        "--kv-cache-dtype",
-        "fp8",
-        *extra,
+    extra = [
+        {"0.58": "0.90", "0.33": "0.90", "16384": "4096", "32768": "4096"}.get(a, a) for a in extra
     ]
-    proc = _vllm(cmd)
+    cmd = ["vllm", "serve", repo, "--served-model-name", model, "--port", str(port)]
+    proc = _vllm([*cmd, "--kv-cache-dtype", "fp8", *extra])
     try:
         _wait_ready(port, proc)
-        body = json.dumps(
-            {
-                "model": "gemma-4-31b",
-                "max_tokens": 200,
-                "messages": [{"role": "user", "content": "Reply with exactly: OK"}],
-            }
-        )
+        request: dict = {
+            "model": model,
+            "max_tokens": 200,
+            "messages": [{"role": "user", "content": "Reply with exactly: OK"}],
+        }
+        if model != CUSTOMER:  # agents must also produce a parsed tool call (tool-call parser)
+            request["messages"] = [{"role": "user", "content": "Look up order #W123 for me."}]
+            request["tools"] = [CHECK_TOOL]
         req = urllib.request.Request(
             f"http://127.0.0.1:{port}/v1/chat/completions",
-            data=body.encode(),
+            data=json.dumps(request).encode(),
             headers={"content-type": "application/json"},
         )
-        out = json.load(urllib.request.urlopen(req, timeout=300))
-        return out["choices"][0]["message"]["content"]
+        message = json.load(urllib.request.urlopen(req, timeout=300))["choices"][0]["message"]
+        if model == CUSTOMER:
+            return message["content"]
+        if not message.get("tool_calls"):
+            raise RuntimeError(f"{model} returned no parsed tool call: {message}")
+        return json.dumps(message["tool_calls"])
     finally:
         proc.terminate()
         compile_cache.commit()
@@ -215,7 +234,11 @@ def check_gemma_startup() -> str:
     image=image,
     gpu=GPU,
     volumes={HF_DIR: hf_cache, CACHE_DIR: compile_cache},
-    secrets=[modal.Secret.from_name("atl-serving"), modal.Secret.from_dict({"ATL_AGENT": AGENT})],
+    secrets=[
+        modal.Secret.from_name("atl-serving"),
+        HF_SECRET,
+        modal.Secret.from_dict({"ATL_AGENT": AGENT}),
+    ],
     max_containers=1,  # never two GPUs
     scaledown_window=180,  # scale to zero 3 minutes after the last request
     timeout=6 * 3600,

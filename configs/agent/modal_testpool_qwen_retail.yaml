@@ -1,0 +1,60 @@
+# Extra Qwen3 8B trials on the test tasks only, to grow the gold pool (248 test traces vs a
+# 400-600 gold target). Collection uses no labels, so this is not leakage.
+# Same models and settings as modal_collect_retail.yaml otherwise; customer = Gemma 4 31B FP8.
+# Endpoint URL and key come from .env (ATL_SERVING_URL, ATL_SERVING_KEY), never from this file.
+run_name: modal_testpool_retail_qwen3vllm_gemma
+domain: retail
+task_ids:  # the 16 retail test tasks of splits/splits_v1.json
+  - tau2/retail/3
+  - tau2/retail/9
+  - tau2/retail/12
+  - tau2/retail/14
+  - tau2/retail/21
+  - tau2/retail/29
+  - tau2/retail/45
+  - tau2/retail/47
+  - tau2/retail/48
+  - tau2/retail/53
+  - tau2/retail/61
+  - tau2/retail/62
+  - tau2/retail/70
+  - tau2/retail/76
+  - tau2/retail/89
+  - tau2/retail/98
+num_trials: 7
+seed: 5000  # distinct from every other collection
+agent_model: openai/qwen3-8b
+agent_llm_args:
+  api_base: ${ATL_SERVING_URL}/v1
+  api_key: ${ATL_SERVING_KEY}
+  timeout: 300
+  extra_body: {chat_template_kwargs: {enable_thinking: false}}
+user_model: openai/gemma-4-31b
+user_llm_args:
+  api_base: ${ATL_SERVING_URL}/v1
+  api_key: ${ATL_SERVING_KEY}
+  timeout: 300
+  num_retries: 3
+  extra_body: {chat_template_kwargs: {enable_thinking: true}}
+prompt_variants: {tau2_default: 0.5, sloppy: 0.25, no_policy: 0.25}
+user_variants: {tau2_default: 0.7, pushy: 0.3}
+faults:  # read tools only; see atl/agent/faults.py
+  run_rate: 0.5
+  call_rate: 0.3
+  max_per_run: 2
+  types: [timeout, error, empty, injection]
+max_concurrency: 16  # vLLM batches parallel conversations; no free-tier caps on our own GPU
+max_steps: 100
+budget_usd: 5.0  # API cost log (stays $0 here); GPU spend is governed by gpu_budget
+gpu_budget:
+  gpu: H100
+  hourly_usd: 3.95  # Modal H100 list price, modal.com/pricing (checked 2026-10-04)
+  cap_usd: 28.5  # Nov 2026: ledger calibrated to Modal ($21.50 spent); $1.49 under the $29.99 limit
+  overhead_s: 900  # cold start + scale-down, charged once per deploy (first config)
+  ledger: data/modal_ledger.jsonl
+prices:
+  openai/qwen3-8b: {input: 0.0, output: 0.0}
+  openai/gemma-4-31b: {input: 0.0, output: 0.0}
+output_dir: data/traces
+cache_dir: data/llm_cache
+cost_log: data/costs.jsonl

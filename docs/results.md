@@ -754,3 +754,40 @@ The T4 idles while waiting but still consumes Colab GPU hours. At this rate 1,50
 - **Gold pool is short:** 248 test traces against a 400–600 gold target. Next session adds Qwen
   trials on the 23 test tasks only (collection uses no labels, so this is not leakage), alongside
   the Llama held-out traces.
+
+### 2026-11-07 — Held-out Llama traces and test-pool top-up; phase 1 gate met
+
+- **Two sessions on one H100**, the agent slot switched at deploy time (`ATL_AGENT`): A = Llama 3.1
+  8B Instruct (vLLM, full precision, `llama3_json` tool parser) + Gemma customer; B = Qwen3 8B +
+  Gemma. Only the 23 test tasks of `splits_v1.json` were run.
+- **Held-out Llama: 182 traces** (retail 126 of 128, env success 10%, 15 flagged; airline 56 of 56,
+  41%, 7 flagged; ~500 runs/hour, since Llama's conversations are short). With the 2 Ollama Llama
+  traces already on test tasks: **184 `heldout_model` traces**.
+  - Llama's airline success (41%) is above Qwen's 22% over *all* airline tasks. Likely the 7 airline
+    test tasks are easier than average (7 tasks: one easy scenario moves the rate a lot), but it
+    was **not** investigated: the test and held-out splits are protected now that the manifest is
+    frozen, so it is a question for `final_eval`, not for ad-hoc analysis.
+- **Qwen test-pool top-up: 161 traces** (retail 112, airline 49; all planned runs). Test pool
+  248 -> **409** traces, inside the 400–600 gold target.
+- **Dataset now:** 2,087 traces — train 1,155, val 159, calib 172, test 409, heldout_model 184,
+  dropped 8. Leakage check passes; HF backup sizes match local.
+- **Two failed starts first, both fixed in code** (interview material — cheap checks before
+  expensive ones):
+  1. The GPU `serve` function lacked the HF secret, so vLLM's start-up check of the gated Llama
+     repo got a 401 and the container crash-looped (~$0.35 until stopped by hand). Fix: secret on
+     every vLLM function; `check_startup --model <name>` on a cheap L40S (one try, no retries) now
+     also requires a parsed tool call from agent models. Llama passed it before the H100 rerun.
+  2. The configs named tasks the way traces store them (`tau2/retail/3`); tau2 wants its own ids
+     (`3`). `--smoke` could not catch it (it swaps in the mock domain and its tasks), so the
+     endpoint warmed up (~$0.5) and both runs died in seconds. Fix: `atl-agent check` pre-flights
+     task ids, `${VAR}`s and the GPU budget with no model calls, and `modal_session.sh` runs it on
+     every config **before** deploying; a test asserts every repo config's task ids exist. The
+     same incident showed the session log reporting `exit=0` for a crash (`$?` read after
+     `$(date)`); fixed.
+- GPU: ledger calibrated to the dashboard ($21.50) before these runs; the cap for these configs was
+  $28.50 (vs Modal's $29.99 limit). Ledger now $28.47 (conservative, includes both failed starts
+  and the L40S check); dashboard figure to be recorded. The 15-minute start-up allowance is now
+  charged once per deploy, not per config.
+- **Phase 1 gate (plan §11): met** — all traces load against schema 1.0 and the splits are fixed
+  (`splits_v1.json`, salt `atl-splits-v67`). Next: phase 2 (taxonomy, seed labels, LLM labeller,
+  kappa; gold set frozen and hashed).

@@ -286,3 +286,32 @@ def test_transient_failures_do_not_stop_the_session(
     lost = [json.loads(x) for x in (run_dir / "failed_runs.jsonl").read_text().splitlines()]
     assert kept == [4, 5]  # 4 consecutive transient failures did not stop the session
     assert len(lost) == 4 and all(x["transient"] for x in lost)
+
+
+def test_preflight_rejects_trace_style_task_ids(tmp_path: Path) -> None:
+    """Configs need tau2's own ids ("3"), not the trace schema's ("tau2/retail/3")."""
+    from atl.agent.run_tau2 import preflight
+
+    ok = _cfg(domain="mock", task_ids=["create_task_1"], output_dir=tmp_path)
+    assert preflight(ok) == 1
+    bad = _cfg(domain="mock", task_ids=["tau2/mock/create_task_1"], output_dir=tmp_path)
+    with pytest.raises(ValueError, match="unknown task ids"):
+        preflight(bad)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [p for p in CONFIGS if AgentRunConfig.from_yaml(p).task_ids is not None],
+    ids=lambda p: p.name,
+)
+def test_repo_config_task_ids_exist(path: Path) -> None:
+    """Every task id named in a repo config is a real tau2 task of its domain."""
+    from atl.agent.run_tau2 import _point_tau2_at_data
+
+    _point_tau2_at_data()
+    from tau2.run import get_tasks
+
+    cfg = AgentRunConfig.from_yaml(path)
+    assert len(_select_tasks(get_tasks(cfg.domain, task_split_name="base"), cfg)) == len(
+        cfg.task_ids
+    )

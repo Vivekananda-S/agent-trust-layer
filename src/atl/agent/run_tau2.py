@@ -595,6 +595,37 @@ def fetch_data(
     logger.info("tau2 data ready at %s (commit %s)", dest / "data", head[:7])
 
 
+def preflight(cfg: AgentRunConfig) -> int:
+    """Check a real (non-smoke) config without any LLM call; return the number of runs to do.
+
+    Catches what `--smoke` cannot (smoke swaps in the mock domain and its own tasks): unknown
+    task ids, unset `${VAR}`s in the endpoint settings, and a GPU ledger with no time left.
+    Run it before paying for a GPU warm-up.
+    """
+    _point_tau2_at_data()
+    from tau2.run import get_tasks
+
+    tasks = _select_tasks(get_tasks(cfg.domain, task_split_name="base"), cfg)
+    expand_env(cfg.agent_llm_args)
+    expand_env(cfg.user_llm_args)
+    if cfg.gpu_budget is not None:
+        session_time_limit(cfg)  # raises BudgetExhausted when the cap leaves no time
+    done = _done_runs(cfg.output_dir / cfg.run_name / "raw.jsonl")
+    return len(pending_runs(tasks, cfg.num_trials, done))
+
+
+@app.command("check")
+def check_cmd(
+    config: Annotated[Path, typer.Option("--config", help="Agent run config YAML.")],
+) -> None:
+    """Pre-flight a config (tasks, env vars, GPU budget) without calling any model."""
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    cfg = AgentRunConfig.from_yaml(config)
+    logger.info("%s: OK, %d runs to do", cfg.run_name, preflight(cfg))
+
+
 @app.command("run")
 def run_cmd(
     config: Annotated[Path, typer.Option("--config", help="Agent run config YAML.")],

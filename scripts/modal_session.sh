@@ -35,6 +35,11 @@ stop_app() {
 trap stop_app EXIT
 
 echo "$(date -u +%T) session start: $*" >> $LOG
+# Pre-flight every config before paying for a warm-up (tasks, env vars, GPU budget; no model calls).
+for cfg in "$@"; do
+  case $cfg in *.yaml) path=$cfg ;; *) path=configs/agent/modal_collect_$cfg.yaml ;; esac
+  $BIN/atl-agent check --config "$path" >> $LOG 2>&1 || { echo "$(date -u +%T) PREFLIGHT FAILED: $path" >> $LOG; exit 1; }
+done
 $BIN/modal deploy src/atl/serving/modal_app.py >> $LOG 2>&1 || exit 1
 $BIN/python - >> $LOG 2>&1 <<'PY' || exit 1
 import time, urllib.request
@@ -50,5 +55,6 @@ for cfg in "$@"; do
   name=$(basename "$path" .yaml)
   echo "$(date -u +%T) run $path" >> $LOG
   $BIN/atl-agent run --config "$path" >> "data/logs/$name.log" 2>&1
-  echo "$(date -u +%T) $name exit=$?" >> $LOG
+  rc=$?  # read before $(date) below resets $?
+  echo "$(date -u +%T) $name exit=$rc" >> $LOG
 done

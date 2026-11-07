@@ -706,3 +706,23 @@ The T4 idles while waiting but still consumes Colab GPU hours. At this rate 1,50
 - Phase 1 status reset: ~100 traces against the ~1,500 target. Modal's monthly $30 credit has
   renewed, so the main collection is to be re-run with the same setup (Qwen3 8B agent, Gemma 4
   31B FP8 customer, one H100).
+
+### 2026-11-07 — Main collection re-run on Modal (Windows laptop, November credit)
+
+- Setup check on the new machine first: tests 165/165, CPU `--smoke` on the Modal configs, then
+  a 10-run paid check (`configs/agent/modal_check_retail.yaml`): new key and URL worked, warm in
+  302 s (compile cache survived on Modal), 10 traces, env success 30%, HF backup on exit, ledger
+  est $1.22.
+- Main session (detached via `Start-Process`, laptop set never to sleep): the H100 sat in Modal's
+  queue for ~7 min (unbilled; warm after 711 s), then airline 19:47–21:09 UTC and retail
+  21:09–00:41 UTC, stopped by the GPU ledger; app stopped by the session script; data/ backed up
+  to HF every 30 min and on exit (backup sizes verified equal to local).
+- **Result:** airline **494** traces (env success 22%, 50 tasks, 225 flagged for review) and retail
+  **1,138** (33%, 114 tasks, 329 flagged). With the check run and the 102 restored traces:
+  **1,744 traces**, all valid against schema 1.0.
+- **Reproducibility:** close to the lost October collection under the same configs — airline again
+  494/500 (the same over-long conversations fail), env success 21.5% -> 22% and 34.7% -> 33%.
+- GPU ledger (conservative): check $1.22 + airline $6.34 + retail $14.96 = **$22.52** of the $27
+  cap; Modal's dashboard figure to be recorded.
+- Phase 1 gate: trace target met again. Still open: held-out-model traces (Llama 3.1 8B on
+  test-pool tasks; 10 so far) and freezing the split manifest.

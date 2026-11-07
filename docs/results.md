@@ -791,3 +791,26 @@ The T4 idles while waiting but still consumes Colab GPU hours. At this rate 1,50
 - **Phase 1 gate (plan §11): met** — all traces load against schema 1.0 and the splits are fixed
   (`splits_v1.json`, salt `atl-splits-v67`). Next: phase 2 (taxonomy, seed labels, LLM labeller,
   kappa; gold set frozen and hashed).
+
+## 2026-11-07 — Phase 2 started: labelling plan, seed queue, labelling app
+
+- **Plan agreed:** Streamlit app for hand labels; the free-tier Gemini API as the LLM labeller (every call
+  cached on disk); and a gold set built from the protected test and held-out traces.
+- **Gold-path exception (approved by the project owner):** to build gold, a person has to read test
+  and `heldout_model` traces, which nothing outside `final_eval` may do. The planned
+  `atl.labels.gold` command will be the only other reader of them. It is for hand verification
+  only and writes only to `data/gold/`. The LLM labeller may pre-label those traces. Its prompt is
+  tuned only on the seed set, which is drawn from train, and nothing from those traces feeds back
+  into prompts, thresholds or training.
+- **Seed queue (`configs/labels/seed_v1.yaml`):** 330 train traces, about 110 train tasks × at most 3
+  per task. Picks go round-robin over 24 strata (agent model × domain × fault group: none,
+  injection or other × environment pass or fail). The first 100 traces cover 23 of the strata.
+  Rare strata are over-represented on purpose, so the seed set's base rates are *not* the
+  population's. Any rate reported from the seed set has to be reweighted, or labelled as
+  stratified.
+- **Anchoring control:** the app hides the environment outcome, the injected fault, the prompt variant and the agent
+  until a label is saved.
+- **Taxonomy v0.1** is in `docs/labelling_guide.md`. The guide adds rules for overlapping classes
+  that the plan's table leaves open. Skipped confirmation or authentication counts as F3, not
+  F1. Ignored errors that lead to false claims count as F5 + F4. Format rules are not labelled in
+  v0.1. The guide also lists five questions for the review after the first 100 labels.

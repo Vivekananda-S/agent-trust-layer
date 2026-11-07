@@ -24,6 +24,7 @@ The gold test set is the hand-verified data in `data/gold/` (and any split named
 
 - **Never** load the gold or held-out sets in training, hyperparameter search, prompt tuning, threshold selection, calibration or early stopping. Use `train`, `val` and `calib` splits for those.
 - Gold data is read **only** by `src/atl/eval/final_eval.py`, through the guarded loader in `src/atl/data/splits.py`. Do not add other code paths that read it.
+  - One approved exception (2026-11-07): `atl.labels.gold` (phase 2) may read test and heldout_model traces so a human can verify gold labels. It writes only to `data/gold/`, and nothing it reads may feed prompts, thresholds or training.
 - **Never** modify, relabel, regenerate, re-split or delete gold data or its hash file (`data/gold/MANIFEST.sha256`). If something seems wrong with it, stop and tell me.
 - Splits are by **task ID**, never by trace. Do not change split logic without asking.
 - If a request would break any of these rules, say so instead of doing it.

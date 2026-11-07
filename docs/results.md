@@ -726,3 +726,31 @@ The T4 idles while waiting but still consumes Colab GPU hours. At this rate 1,50
   cap; Modal's dashboard figure to be recorded.
 - Phase 1 gate: trace target met again. Still open: held-out-model traces (Llama 3.1 8B on
   test-pool tasks; 10 so far) and freezing the split manifest.
+
+### 2026-11-07 — Split manifest frozen (salt `atl-splits-v67`)
+
+- **Problem with the original salt.** `atl-splits-v1` gave airline only 4 of 50 test tasks (8% vs
+  15%), so airline test numbers would rest on 4 customer scenarios. Hash noise, as predicted on
+  2026-10-03; the salt may change once, before freezing.
+- **Rule fixed before looking at any other salt:** the first of `atl-splits-v2`, `-v3`, ... whose
+  test share is within 3 points of 15% in each domain. v2 passed (retail 12.3%, airline 18.0%),
+  but left airline with **1 val and 2 calib tasks** — the rule was too narrow. **Amended once,
+  openly:** every split within 3 points of its target in each domain. First passing salt:
+  **`atl-splits-v67`** (66 tried). The rule only sees task ids — never outcomes, traces' content
+  or labels — so trying salts cannot bias any reported number.
+
+| v67 | train | val | calib | test |
+| --- | --- | --- | --- | --- |
+| retail (114 tasks) | 77 (67.5%) | 8 (7.0%) | 13 (11.4%) | 16 (14.0%) |
+| airline (50 tasks) | 33 (66.0%) | 6 (12.0%) | 4 (8.0%) | 7 (14.0%) |
+
+- **Trace counts (1,744 traces):** train 1,155, val 159, calib 172, test 248, heldout_model 2,
+  dropped 8. Manifest `splits/splits_v1.json`, sha256 `414c1910…fedb5f`; leakage check passes.
+- **Held-out model is a list.** `heldout_models` names every label of the held-out model (Llama 3.1
+  8B: `ollama_chat/llama3.1:8b` from the 4-bit Ollama benchmark and `openai/llama-3.1-8b` on vLLM).
+  With the old single-name field, the 8 Ollama Llama traces on non-test tasks would have been
+  routed to **train** under their second name: a held-out-model leak. Now they are dropped; a test
+  covers it.
+- **Gold pool is short:** 248 test traces against a 400–600 gold target. Next session adds Qwen
+  trials on the 23 test tasks only (collection uses no labels, so this is not leakage), alongside
+  the Llama held-out traces.

@@ -1,14 +1,17 @@
 # Task-level split configuration. See docs/plan.md section 5 ("Splits").
 # Changing salt or fractions after the manifest is frozen is a new split version.
 version: 1
-salt: "atl-splits-v1"
+# Salt chosen 2026-11-07 by a rule fixed in advance on task ids only (docs/results.md): the first
+# of atl-splits-v2, -v3, ... with every split within 3 points of its target in each domain.
+salt: "atl-splits-v67"
 fractions:
   train: 0.65
   val: 0.10
   calib: 0.10
   test: 0.15
-# Agent model kept out of training entirely (drift test). Set once agent models are chosen.
-heldout_model: null
+# Agent model kept out of training entirely (drift test): Llama 3.1 8B, under every label it has
+# (4-bit Ollama benchmark runs, and full precision on vLLM).
+heldout_models: [ollama_chat/llama3.1:8b, openai/llama-3.1-8b]
 # tau2-bench domains used for train/val/calib/test. Traces from any other domain
 # (e.g. banking_knowledge) go to the `ood` split.
 in_domains: [retail, airline]

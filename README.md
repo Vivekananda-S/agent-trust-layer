@@ -3,35 +3,20 @@
 A small, calibrated judge model that reads an AI agent's execution trace and predicts whether the
 agent failed and which failure classes (F1–F8) occurred. See [docs/plan.md](docs/plan.md).
 
-## Setup
+## Setup (Windows)
 
-Python 3.12. `requirements.txt` pins the tested versions and works on Ubuntu and Windows.
+Python 3.12. `requirements.txt` pins the tested versions. Run these in Git Bash from the repo root:
 
 ```bash
 uv venv --python 3.12 .venv
-source .venv/bin/activate            # Windows: .venv\Scripts\activate
-uv pip install -r requirements.txt   # or: pip install -r requirements.txt
+source .venv/Scripts/activate        # PowerShell: .venv\Scripts\Activate.ps1
+uv pip install -r requirements.txt
 atl-agent fetch-data                 # pinned tau2-bench checkout into external/ (policies, tasks)
 pytest
 ```
 
 Copy `.env.example` to `.env` and fill it in. GPU training dependencies (the `train` extra) are
-installed on Colab, not here.
-
-## Moving to a new machine
-
-For the full Ubuntu walkthrough, with the expected outputs and the project state at the time of the move, see
-[docs/setup_ubuntu.md](docs/setup_ubuntu.md). In short, none of these items is in git, so carry each one over by hand:
-
-1. **`.env`** holds the secrets (`ATL_SERVING_URL`, `ATL_SERVING_KEY`, `HF_TOKEN`, `ATL_HF_DATASET`,
-   `GEMINI_API_KEY`). Copy the file over privately; never through git. If it is lost, regenerate
-   each key from its provider's dashboard. The serving key must match the Modal secret
-   `atl-serving`.
-2. **Push all commits** on the old machine (`git status -sb` must not say "ahead").
-3. **Back up `data/`** on the old machine (see below), then restore it on the new one.
-4. **Modal login:** `modal token new`. Hugging Face uses `HF_TOKEN` from `.env`.
-5. **Git identity:** `git config user.name` and `git config user.email`.
-6. **`external/tau2-bench`:** re-create it with `atl-agent fetch-data`.
+installed on Colab, not here. Set `PYTHONUTF8=1` when you run the CLIs in Git Bash.
 
 ## Data and backups
 
@@ -65,7 +50,7 @@ in `.env`).
 - **Second copy (recommended, manual):** once a week, zip `data/` and copy it into the Google Drive
   folder `agent-trust-layer/`.
 
-**Restoring on a new machine:**
+**Restoring after data loss:**
 
 ```bash
 hf download "$ATL_HF_DATASET" --repo-type dataset --local-dir data

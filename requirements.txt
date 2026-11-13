@@ -1,6 +1,6 @@
 # Pinned dependencies for local work: tests, agent runs (tau2-bench), Modal serving, labelling app.
 # Versions are the ones tested on 2026-11-14; resolved for every OS (Windows-only lines carry a
-# marker), so the same file installs on Ubuntu. GPU training deps (`train` extra) are not here:
+# marker). GPU training deps (`train` extra) are not here:
 # they run on Colab. Regenerate after changing pyproject.toml:
 #   uv pip compile pyproject.toml --extra dev --extra agent --extra serving --extra labels \
 #     --universal --python-version 3.12 -o requirements.txt

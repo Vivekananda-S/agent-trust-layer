@@ -353,8 +353,11 @@ def check(traces: TracesOpt, config: ConfigOpt = Path("configs/splits.yaml")) ->
     """Re-run the leakage checks for the manifest named in the config."""
     cfg = SplitConfig.from_yaml(config)
     manifest = load_manifest(cfg.manifest_path)
-    check_no_leakage(manifest, [t for path in traces for t in load_traces(path)])
+    loaded = [t for path in traces for t in load_traces(path)]
+    check_no_leakage(manifest, loaded)
     _log_summary(manifest)
+    current = Counter(trace_split(t, manifest) or "dropped" for t in loaded)
+    logger.info("current trace counts: %s", dict(sorted(current.items())))
 
 
 def _log_summary(manifest: SplitManifest) -> None:
@@ -371,7 +374,7 @@ def _log_summary(manifest: SplitManifest) -> None:
             100 * manifest.fractions[name],
         )
     logger.info("ood    tasks=%5d", task_counts["ood"])
-    logger.info("trace counts: %s", manifest.trace_counts)
+    logger.info("trace counts when the manifest was built: %s", manifest.trace_counts)
 
 
 if __name__ == "__main__":

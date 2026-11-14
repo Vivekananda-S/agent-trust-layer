@@ -301,3 +301,27 @@ def test_gold_extra_file_detected(tmp_path: Path, traces: list[Trace]) -> None:
 def test_gold_without_manifest_detected(tmp_path: Path) -> None:
     with pytest.raises(GoldIntegrityError, match="not found"):
         verify_gold_manifest(tmp_path)
+
+
+def test_check_cli_logs_current_counts(
+    tmp_path: Path, cfg: SplitConfig, traces: list[Trace], caplog: pytest.LogCaptureFixture
+) -> None:
+    """`check` reports counts from the traces given, not the ones frozen in the manifest."""
+    from typer.testing import CliRunner
+
+    manifest_path = tmp_path / "splits.json"
+    save_manifest(build_manifest(traces[:2], cfg), manifest_path)  # frozen with 2 train traces
+    config = tmp_path / "splits.yaml"
+    config.write_text(
+        json.dumps(cfg.model_dump(mode="json") | {"manifest_path": str(manifest_path)})
+    )
+    trace_file = tmp_path / "traces.jsonl"
+    extra = make_trace("t_new", "retail_task_000")  # a later trace on a known train task
+    save_traces([*traces[:2], extra], trace_file)
+
+    with caplog.at_level("INFO", logger="atl.data.splits"):
+        result = CliRunner().invoke(
+            splits.app, ["check", "--traces", str(trace_file), "--config", str(config)]
+        )
+    assert result.exit_code == 0, result.output
+    assert "current trace counts: {'train': 3}" in caplog.text

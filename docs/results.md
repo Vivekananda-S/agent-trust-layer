@@ -814,3 +814,18 @@ The T4 idles while waiting but still consumes Colab GPU hours. At this rate 1,50
   that the plan's table leaves open. Skipped confirmation or authentication counts as F3, not
   F1. Ignored errors that lead to false claims count as F5 + F4. Format rules are not labelled in
   v0.1. The guide also lists five questions for the review after the first 100 labels.
+
+### 2026-11-14 — Backup audit
+
+- Compared every file in `data/` (except `llm_cache/` and `smoke/`) with the private HF dataset
+  `vivekanandashonti/atl-data`. 55 local files and 357 MB, and every one is on HF. The only
+  mismatch was `logs/modal_session.log`, whose last lines had not been uploaded; it has been
+  re-uploaded.
+- **Gap found:** two code commits (the labelling app and the guide) existed only on the laptop.
+  The data backup covers `data/`, not unpushed git work. Both commits are now pushed. **Lesson:**
+  push after each work session, not only after Modal runs.
+- No hand labels exist yet. `data/labels/human.jsonl` is to be uploaded after every labelling
+  session.
+- The backup policy and restore steps are now in the README ("Data and backups"). HF is the only
+  off-laptop copy of the data, so a weekly zip of `data/` to Google Drive is recommended as a
+  second copy (a manual step).

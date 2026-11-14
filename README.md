@@ -50,7 +50,8 @@ in `.env`).
 
 ```bash
 hf download "$ATL_HF_DATASET" --repo-type dataset --local-dir data
-atl-splits check --traces data/traces/*/traces.jsonl   # the traces still match splits/splits_v1.json
+# check the traces still match splits/splits_v1.json (one --traces per file)
+atl-splits check $(for f in data/traces/*/traces.jsonl; do echo --traces "$f"; done)
 ```
 
 After restoring, compare file sizes with the HF listing before you trust the copy. The audit in

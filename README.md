@@ -9,7 +9,7 @@ Python 3.12. `requirements.txt` pins the tested versions and works on Ubuntu and
 
 ```bash
 uv venv --python 3.12 .venv
-source .venv/bin/activate            # Windows: .venv\Scriptsctivate
+source .venv/bin/activate            # Windows: .venv\Scripts\activate
 uv pip install -r requirements.txt   # or: pip install -r requirements.txt
 atl-agent fetch-data                 # pinned tau2-bench checkout into external/ (policies, tasks)
 pytest

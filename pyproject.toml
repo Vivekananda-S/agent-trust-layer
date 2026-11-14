@@ -59,6 +59,7 @@ dev = [
     "ruff>=0.6",
     "fastapi>=0.115",  # tests for the serving proxy
     "httpx>=0.27",
+    "huggingface_hub>=2.0,<3",  # `hf` CLI: data backup and restore (README)
 ]
 
 [tool.hatch.metadata]

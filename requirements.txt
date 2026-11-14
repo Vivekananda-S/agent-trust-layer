@@ -1,0 +1,114 @@
+# Pinned dependencies for local work: tests, agent runs (tau2-bench), Modal serving, labelling app.
+# Versions are the ones tested on 2026-11-14; resolved for every OS (Windows-only lines carry a
+# marker), so the same file installs on Ubuntu. GPU training deps (`train` extra) are not here:
+# they run on Colab. Regenerate after changing pyproject.toml:
+#   uv pip compile pyproject.toml --extra dev --extra agent --extra serving --extra labels \
+#     --universal --python-version 3.12 -o requirements.txt
+# Install (Python 3.12):
+#   uv venv --python 3.12 .venv && uv pip install -r requirements.txt
+#   (or: python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt)
+addict==2.4.0             # via tau2
+aiohappyeyeballs==2.7.1   # via aiohttp
+aiohttp==3.14.5           # via litellm, modal
+aiosignal==1.4.0          # via aiohttp
+altair==6.3.0             # via streamlit
+annotated-doc==0.0.5      # via fastapi, typer
+annotated-types==0.8.0    # via pydantic
+anyio==4.16.0             # via httpx, httpx2, openai, starlette, streamlit, watchfiles
+attrs==26.1.0             # via aiohttp, jsonschema, referencing
+cachebox==5.2.3           # via deepdiff
+cbor2==6.2.0.post2        # via modal
+certifi==2026.10.23       # via httpcore, httpx, modal, requests
+charset-normalizer==3.5.2  # via requests
+click==8.5.1              # via huggingface-hub, litellm, modal, streamlit, uvicorn
+colorama==0.4.6 ; sys_platform == 'win32'  # via loguru, pytest, tqdm, typer
+deepdiff==9.1.0           # via tau2
+docstring-parser==0.18.0  # via tau2
+fastapi==0.162.0          # via tau2, atl (pyproject.toml)
+fastuuid==0.14.0          # via litellm
+filelock==4.2.9           # via huggingface-hub
+frozenlist==1.8.0         # via aiohttp, aiosignal
+fsspec==2026.9.0          # via huggingface-hub
+grpclib==0.4.9            # via modal
+h11==0.16.0               # via httpcore, httpcore2, uvicorn
+h2==4.4.1                 # via grpclib
+hf-xet==1.8.0 ; platform_machine == 'AMD64' or platform_machine == 'ARM64' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64'  # via huggingface-hub
+hpack==4.2.0              # via h2
+httpcore==1.0.9           # via httpx
+httpcore2==2.16.0 ; sys_platform != 'emscripten'  # via httpx2
+httpx==0.28.1             # via litellm, tau2, atl (pyproject.toml)
+httpx2==2.16.0            # via huggingface-hub, openai
+httpx2-jsfetch==1.0 ; sys_platform == 'emscripten'  # via httpx2
+huggingface-hub==2.4.0    # via tokenizers, atl (pyproject.toml)
+hyperframe==6.1.0         # via h2
+idna==3.20                # via anyio, httpx, httpx2, requests, yarl
+importlib-metadata==10.1.0  # via litellm
+iniconfig==2.3.1          # via pytest
+itsdangerous==2.2.0       # via streamlit
+jinja2==3.1.6             # via altair, litellm, pydeck
+jiter==0.19.0             # via openai
+jsonschema==4.26.0        # via altair, litellm
+jsonschema-specifications==2025.9.1  # via jsonschema
+litellm==1.82.6           # via tau2
+loguru==0.7.3             # via tau2
+markdown-it-py==4.2.0     # via rich
+markupsafe==3.0.4         # via jinja2
+mdurl==0.1.2              # via markdown-it-py
+modal==1.6.3              # via atl (pyproject.toml)
+multidict==7.2.1          # via aiohttp, grpclib, yarl
+narwhals==2.28.0          # via altair
+numpy==2.5.4              # via pandas, pydeck, streamlit, tau2
+openai==3.46.0            # via litellm
+opentelemetry-api==1.45.2  # via fastapi
+orderly-set==5.5.0        # via deepdiff
+packaging==26.3           # via altair, huggingface-hub, pytest, streamlit
+pandas==3.1.1             # via streamlit, tau2
+pillow==13.0.0            # via streamlit
+pluggy==1.7.0             # via pytest
+propcache==0.5.4          # via aiohttp, yarl
+protobuf==7.36.2          # via modal, streamlit
+psutil==7.2.2             # via tau2
+pyarrow==26.0.1           # via streamlit
+pydantic==2.14.3          # via fastapi, litellm, openai, atl (pyproject.toml)
+pydantic-core==2.50.4     # via pydantic
+pydeck==0.9.3             # via streamlit
+pygments==2.21.0          # via pytest, rich
+pytest==9.2.0             # via atl (pyproject.toml)
+python-dateutil==4.0.0    # via pandas
+python-dotenv==1.2.4      # via litellm, tau2, atl (pyproject.toml)
+python-multipart==0.0.33  # via streamlit
+pyyaml==6.0.3             # via huggingface-hub, tau2, atl (pyproject.toml)
+referencing==0.37.0       # via jsonschema, jsonschema-specifications
+regex==2026.9.29          # via tiktoken
+requests==2.34.2          # via streamlit, tau2, tiktoken
+rich==15.0.0              # via modal, tau2, typer
+rpds-py==2026.9.1         # via jsonschema, referencing
+ruff==0.17.4              # via atl (pyproject.toml)
+shellingham==1.5.4        # via typer
+sniffio==1.3.1            # via openai
+starlette==1.10.0         # via fastapi, streamlit
+streamlit==1.67.0         # via atl (pyproject.toml)
+synchronicity==0.12.7     # via modal
+tabulate==0.10.0          # via tau2
+tau2 @ git+https://github.com/sierra-research/tau2-bench@5bfa7e37b36656b37dc6d022156be6563c1007f3  # via atl (pyproject.toml)
+tenacity==9.2.1           # via tau2
+tiktoken==0.14.0          # via litellm
+tokenizers==0.23.3        # via litellm
+toml==0.10.2              # via modal, tau2
+tqdm==4.70.1              # via huggingface-hub
+truststore==0.10.5 ; sys_platform != 'emscripten'  # via httpcore2, httpx2
+typer==0.28.0             # via tau2, atl (pyproject.toml)
+types-certifi==2021.10.8.3  # via modal
+types-toml==0.10.8.20260518  # via modal
+typing-extensions==4.16.0  # via aiohttp, aiosignal, altair, anyio, fastapi, httpx2, huggingface-hub, modal, openai, opentelemetry-api, pydantic, pydantic-core, referencing, starlette, streamlit, synchronicity, typing-inspection
+typing-inspection==0.4.5  # via fastapi, pydantic
+tzdata==2026.6            # via pandas, python-dateutil
+urllib3==2.8.0            # via requests
+uvicorn==0.54.0           # via streamlit, tau2
+watchdog==7.1.0 ; sys_platform != 'darwin'  # via streamlit
+watchfiles==1.3.0         # via modal
+websockets==17.4          # via streamlit, atl (pyproject.toml)
+win32-setctime==1.2.1 ; sys_platform == 'win32'  # via loguru
+yarl==1.25.1              # via aiohttp
+zipp==4.1.2               # via importlib-metadata
+-e .

@@ -5,14 +5,32 @@ agent failed and which failure classes (F1–F8) occurred. See [docs/plan.md](do
 
 ## Setup
 
+Python 3.12. `requirements.txt` pins the tested versions and works on Ubuntu and Windows.
+
 ```bash
 uv venv --python 3.12 .venv
-source .venv/bin/activate
-uv pip install -e ".[dev,agent]"   # `agent` adds tau2-bench; omit it for judge-only work
+source .venv/bin/activate            # Windows: .venv\Scriptsctivate
+uv pip install -r requirements.txt   # or: pip install -r requirements.txt
+atl-agent fetch-data                 # pinned tau2-bench checkout into external/ (policies, tasks)
 pytest
 ```
 
-Copy `.env.example` to `.env` and fill in the API keys you have.
+Copy `.env.example` to `.env` and fill it in. GPU training dependencies (the `train` extra) are
+installed on Colab, not here.
+
+## Moving to a new machine
+
+None of these items is in git, so carry each one over by hand:
+
+1. **`.env`** holds the secrets (`ATL_SERVING_URL`, `ATL_SERVING_KEY`, `HF_TOKEN`, `ATL_HF_DATASET`,
+   `GEMINI_API_KEY`). Copy the file over privately; never through git. If it is lost, regenerate
+   each key from its provider's dashboard. The serving key must match the Modal secret
+   `atl-serving`.
+2. **Push all commits** on the old machine (`git status -sb` must not say "ahead").
+3. **Back up `data/`** on the old machine (see below), then restore it on the new one.
+4. **Modal login:** `modal token new`. Hugging Face uses `HF_TOKEN` from `.env`.
+5. **Git identity:** `git config user.name` and `git config user.email`.
+6. **`external/tau2-bench`:** re-create it with `atl-agent fetch-data`.
 
 ## Data and backups
 

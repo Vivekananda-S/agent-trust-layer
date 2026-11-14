@@ -20,7 +20,8 @@ installed on Colab, not here.
 
 ## Moving to a new machine
 
-None of these items is in git, so carry each one over by hand:
+For the full Ubuntu walkthrough, with the expected outputs and the project state at the time of the move, see
+[docs/setup_ubuntu.md](docs/setup_ubuntu.md). In short, none of these items is in git, so carry each one over by hand:
 
 1. **`.env`** holds the secrets (`ATL_SERVING_URL`, `ATL_SERVING_KEY`, `HF_TOKEN`, `ATL_HF_DATASET`,
    `GEMINI_API_KEY`). Copy the file over privately; never through git. If it is lost, regenerate
